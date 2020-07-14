@@ -257,6 +257,9 @@ namespace OpenRA.Mods.Common.Server
 				}
 			}
 
+			// add closed slot client
+			server.LobbyInfo.Clients.Add(new Session.Client { Closed = true, Slot = s, Index = -1, Bot = "ClosedSlot" });
+
 			server.LobbyInfo.Slots[s].Closed = true;
 			server.SyncLobbySlots();
 

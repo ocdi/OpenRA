@@ -587,14 +587,21 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				if (idx < players.Children.Count)
 					template = players.Children[idx];
 
-				if (client == null)
+				if (client == null || client.Closed)
 				{
 					// Empty slot
 					if (template == null || template.Id != emptySlotTemplate.Id)
 						template = emptySlotTemplate.Clone();
 
 					if (isHost)
+					{
 						LobbyUtils.SetupEditableSlotWidget(template, slot, client, orderManager, worldRenderer, map);
+						if (client != null && slot.Closed)
+						{
+							// todo make a special client here
+							LobbyUtils.SetupEditableSpawnWidget(template, slot, client, orderManager, map);
+						}
+					}
 					else
 						LobbyUtils.SetupSlotWidget(template, slot, client);
 

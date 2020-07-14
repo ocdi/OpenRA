@@ -138,6 +138,7 @@ namespace OpenRA.Network
 			public string Location;
 
 			public ClientState State = ClientState.Invalid;
+			public bool Closed; // Indicate this client is a closed slot to track the SpawnPoint to prevent other players spawning there
 			public int Team;
 			public string Slot; // Slot ID, or null for observer
 			public string Bot; // Bot type, null for real clients
