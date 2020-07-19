@@ -95,6 +95,8 @@ namespace OpenRA.Mods.Common.Traits
 				availableSpawnPoints.Remove(client.SpawnPoint);
 				occupiedSpawnPoints.Add(client.SpawnPoint, client);
 			}
+			
+			// TODO exclude the disabled spawns here except for the pre-assigned ones
 		}
 
 		CPos IAssignSpawnPoints.AssignHomeLocation(World world, Session.Client client)

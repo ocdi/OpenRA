@@ -43,6 +43,7 @@ namespace OpenRA.Mods.Common.Server
 			{ "faction", Faction },
 			{ "team", Team },
 			{ "spawn", Spawn },
+			{ "toggle_spawn", ToggleSpawn },
 			{ "color", PlayerColor },
 			{ "sync_lobby", SyncLobby }
 		};
@@ -115,6 +116,11 @@ namespace OpenRA.Mods.Common.Server
 			if (server.LobbyInfo.Slots.Any(sl => sl.Value.Required && server.LobbyInfo.ClientInSlot(sl.Key) == null))
 				return;
 
+			// Can't have insufficient spawns
+			var availableSpawnCount = server.Map.SpawnPoints.Length - server.LobbyInfo.DisabledSpawns.Count;
+			if (availableSpawnCount < server.LobbyInfo.Clients.Count(c => !c.IsObserver))
+				return;
+
 			server.StartGame();
 		}
 
@@ -144,6 +150,13 @@ namespace OpenRA.Mods.Common.Server
 			if (!client.IsAdmin)
 			{
 				server.SendOrderTo(conn, "Message", "Only the host can start the game.");
+				return true;
+			}
+
+			var availableSpawnCount = server.Map.SpawnPoints.Length - server.LobbyInfo.DisabledSpawns.Count;
+			if (availableSpawnCount < server.LobbyInfo.Clients.Count(c => !c.IsObserver))
+			{
+				server.SendOrderTo(conn, "Message", "Unable to start the game until more spawn points are enabled.");
 				return true;
 			}
 
@@ -440,6 +453,8 @@ namespace OpenRA.Mods.Common.Server
 				foreach (var c in server.LobbyInfo.Clients)
 					if (c.Slot != null && !server.LobbyInfo.Slots[c.Slot].LockColor)
 						c.Color = c.PreferredColor = SanitizePlayerColor(server, c.Color, c.Index, conn);
+
+				server.LobbyInfo.DisabledSpawns.Clear();
 
 				server.SyncLobbyInfo();
 
@@ -751,6 +766,46 @@ namespace OpenRA.Mods.Common.Server
 
 			targetClient.Team = team;
 			server.SyncLobbyClients();
+
+			return true;
+		}
+
+		static bool ToggleSpawn(S server, Connection conn, Session.Client client, string s)
+		{
+			if (!client.IsAdmin)
+			{
+				server.SendOrderTo(conn, "Message", "Only admins can disable spawn points.");
+				return true;
+			}
+
+			var spawnPoint = Exts.ParseIntegerInvariant(s);
+			if (spawnPoint == 0)
+				return true;
+
+			var existingClient = server.LobbyInfo.Clients.FirstOrDefault(cc => cc.SpawnPoint == spawnPoint);
+
+			if (!server.LobbyInfo.DisabledSpawns.Contains(spawnPoint))
+			{
+				// check we have enough to toggle
+				var availableSpawnCount = server.Map.SpawnPoints.Length - server.LobbyInfo.DisabledSpawns.Count - 1;
+				if (availableSpawnCount < server.LobbyInfo.Clients.Count(c => !c.IsObserver))
+				{
+					server.SendOrderTo(conn, "Message", "Unable to disable as there would be insufficient spawn locations for all players.");
+					return true;
+				}
+
+				server.LobbyInfo.DisabledSpawns.Add(spawnPoint);
+			}
+			else
+				server.LobbyInfo.DisabledSpawns.Remove(spawnPoint);
+
+			if (existingClient != null)
+			{
+				existingClient.SpawnPoint = 0;
+				server.SyncLobbyClients();
+			}
+
+			server.SyncLobbyInfo();
 
 			return true;
 		}

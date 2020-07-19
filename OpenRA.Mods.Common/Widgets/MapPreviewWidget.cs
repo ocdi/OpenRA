@@ -26,6 +26,7 @@ namespace OpenRA.Mods.Common.Widgets
 		public readonly int Team;
 		public readonly string Faction;
 		public readonly int SpawnPoint;
+		public readonly bool Closed;
 
 		public SpawnOccupant(Session.Client client)
 		{
@@ -43,6 +44,14 @@ namespace OpenRA.Mods.Common.Widgets
 			Team = player.Team;
 			Faction = player.FactionId;
 			SpawnPoint = player.SpawnPoint;
+		}
+
+		public SpawnOccupant(int closedSpawn)
+		{
+			Closed = true;
+			SpawnPoint = closedSpawn;
+			Color = Color.Black;
+			PlayerName = "Closed spawn";
 		}
 
 		public SpawnOccupant(GameClient player, bool suppressFaction)
@@ -64,7 +73,7 @@ namespace OpenRA.Mods.Common.Widgets
 		public readonly string TooltipTemplate = "SPAWN_TOOLTIP";
 		readonly Lazy<TooltipContainerWidget> tooltipContainer;
 
-		readonly Sprite spawnClaimed, spawnUnclaimed;
+		readonly Sprite spawnClaimed, spawnUnclaimed, spawnClosed;
 		readonly SpriteFont spawnFont;
 		readonly Color spawnColor, spawnContrastColor;
 		readonly int2 spawnLabelOffset;
@@ -85,6 +94,7 @@ namespace OpenRA.Mods.Common.Widgets
 
 			spawnClaimed = ChromeProvider.GetImage("lobby-bits", "spawn-claimed");
 			spawnUnclaimed = ChromeProvider.GetImage("lobby-bits", "spawn-unclaimed");
+			spawnClosed = ChromeProvider.GetImage("lobby-bits", "spawn-closed");
 			spawnFont = Game.Renderer.Fonts[ChromeMetrics.Get<string>("SpawnFont")];
 			spawnColor = ChromeMetrics.Get<Color>("SpawnColor");
 			spawnContrastColor = ChromeMetrics.Get<Color>("SpawnContrastColor");
@@ -192,20 +202,21 @@ namespace OpenRA.Mods.Common.Widgets
 					// Spawn numbers are 1 indexed with 0 meaning "random spawn".
 					var occupied = occupants.TryGetValue(i + 1, out var occupant);
 					var pos = ConvertToPreview(p, gridType);
-					var sprite = occupied ? spawnClaimed : spawnUnclaimed;
+					var sprite = occupied ? occupant.Closed ? spawnClosed : spawnClaimed : spawnUnclaimed;
 					var offset = sprite.Size.XY.ToInt2() / 2;
 
-					if (occupied)
+					if (occupied && !occupant.Closed)
 						WidgetUtils.FillEllipseWithColor(new Rectangle(pos.X - offset.X + 1, pos.Y - offset.Y + 1, (int)sprite.Size.X - 2, (int)sprite.Size.Y - 2), occupant.Color);
 
 					Game.Renderer.RgbaSpriteRenderer.DrawSprite(sprite, pos - offset);
+
+					if (occupied && occupant.Closed)
+						continue;
+
 					var number = Convert.ToChar('A' + spawnPoints.IndexOf(p)).ToString();
 					var textOffset = spawnFont.Measure(number) / 2 + spawnLabelOffset;
 
 					spawnFont.DrawTextWithContrast(number, pos - textOffset, spawnColor, spawnContrastColor, 1);
-
-					if (((pos - Viewport.LastMousePos).ToFloat2() / offset.ToFloat2()).LengthSquared <= 1)
-						TooltipSpawnIndex = spawnPoints.IndexOf(p) + 1;
 				}
 			}
 		}

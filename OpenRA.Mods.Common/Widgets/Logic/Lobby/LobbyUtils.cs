@@ -229,27 +229,46 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 
 		public static void SelectSpawnPoint(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
 		{
-			if (mi.Button != MouseButton.Left)
-				return;
+			if (mi.Button == MouseButton.Left)
+				SelectPlayerSpawn(orderManager, mapPreview, preview, mi);
 
+			if (mi.Button == MouseButton.Right && Game.IsHost)
+				ToggleSpawn(orderManager, mapPreview, preview, mi);
+		}
+
+		private static void SelectPlayerSpawn(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
+		{
 			if (!orderManager.LocalClient.IsObserver && orderManager.LocalClient.State == Session.ClientState.Ready)
 				return;
 
-			var spawnSize = ChromeProvider.GetImage("lobby-bits", "spawn-unclaimed").Size.XY;
-			var selectedSpawn = preview.SpawnPoints
-				.Select((sp, i) => (SpawnLocation: mapPreview.ConvertToPreview(sp, preview.GridType), Index: i))
-				.Where(a => ((a.SpawnLocation - mi.Location).ToFloat2() / spawnSize * 2).LengthSquared <= 1)
-				.Select(a => a.Index + 1)
-				.FirstOrDefault();
+			var selectedSpawn = DetermineSelectedSpawn(mapPreview, preview, mi);
 
 			var locals = orderManager.LobbyInfo.Clients.Where(c => c.Index == orderManager.LocalClient.Index || (Game.IsHost && c.Bot != null));
 			var playerToMove = locals.FirstOrDefault(c => ((selectedSpawn == 0) ^ (c.SpawnPoint == 0) && !c.IsObserver));
 			SetSpawnPoint(orderManager, playerToMove, selectedSpawn);
 		}
 
+		private static void ToggleSpawn(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
+		{
+			var selectedSpawn = DetermineSelectedSpawn(mapPreview, preview, mi);
+
+			orderManager.IssueOrder(Order.Command("toggle_spawn {0}".F(selectedSpawn)));
+		}
+
+		private static int DetermineSelectedSpawn(MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
+		{
+			var spawnSize = ChromeProvider.GetImage("lobby-bits", "spawn-unclaimed").Size.XY;
+			var selectedSpawn = preview.SpawnPoints
+				.Select((sp, i) => (SpawnLocation: mapPreview.ConvertToPreview(sp, preview.GridType), Index: i))
+				.Where(a => ((a.SpawnLocation - mi.Location).ToFloat2() / spawnSize * 2).LengthSquared <= 1)
+				.Select(a => a.Index + 1)
+				.FirstOrDefault();
+			return selectedSpawn;
+		}
+
 		private static void SetSpawnPoint(OrderManager orderManager, Session.Client playerToMove, int selectedSpawn)
 		{
-			var owned = orderManager.LobbyInfo.Clients.Any(c => c.SpawnPoint == selectedSpawn);
+			var owned = orderManager.LobbyInfo.Clients.Any(c => c.SpawnPoint == selectedSpawn) || orderManager.LobbyInfo.DisabledSpawns.Contains(selectedSpawn);
 			if (selectedSpawn == 0 || !owned)
 				orderManager.IssueOrder(Order.Command("spawn {0} {1}".F((playerToMove ?? orderManager.LocalClient).Index, selectedSpawn)));
 		}
@@ -537,7 +556,8 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			{
 				var spawnPoints = Enumerable.Range(0, map.SpawnPoints.Length + 1).Except(
 					orderManager.LobbyInfo.Clients.Where(
-					client => client != c && client.SpawnPoint != 0).Select(client => client.SpawnPoint));
+					client => client != c && client.SpawnPoint != 0).Select(client => client.SpawnPoint))
+					.Except(orderManager.LobbyInfo.DisabledSpawns);
 				ShowSpawnDropDown(dropdown, c, orderManager, spawnPoints);
 			};
 			dropdown.GetText = () => (c.SpawnPoint == 0) ? "-" : Convert.ToChar('A' - 1 + c.SpawnPoint).ToString();

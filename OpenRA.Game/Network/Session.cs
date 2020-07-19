@@ -26,6 +26,8 @@ namespace OpenRA.Network
 		// Keyed by the PlayerReference id that the slot corresponds to
 		public Dictionary<string, Slot> Slots = new Dictionary<string, Slot>();
 
+		public List<int> DisabledSpawns = new List<int>();
+
 		public Global GlobalSettings = new Global();
 
 		public static string AnonymizeIP(IPAddress ip)
@@ -68,6 +70,9 @@ namespace OpenRA.Network
 						case "Slot":
 							var s = Slot.Deserialize(node.Value);
 							session.Slots.Add(s.PlayerReference, s);
+							break;
+						case "DisabledSpawns":
+							session.DisabledSpawns = FieldLoader.GetValue<List<int>>("DisabledSpawns", node.Value.Value);
 							break;
 					}
 				}
@@ -267,7 +272,10 @@ namespace OpenRA.Network
 
 		public string Serialize()
 		{
-			var sessionData = new List<MiniYamlNode>();
+			var sessionData = new List<MiniYamlNode>()
+			{
+				new MiniYamlNode("DisabledSpawns", FieldSaver.FormatValue(DisabledSpawns))
+			};
 
 			foreach (var client in Clients)
 				sessionData.Add(client.Serialize());
