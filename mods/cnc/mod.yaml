@@ -4,10 +4,11 @@ Metadata:
 	Website: https://www.openra.net
 	WebIcon32: https://www.openra.net/images/icons/cnc_32x32.png
 
-PackageFormats: Mix
+PackageFormats: Mix, MegV3
 
 Packages:
 	~^Content/cnc
+	~^Content/cncrm
 	~^Content/cnc/movies
 	.
 	$cnc: cnc
@@ -21,6 +22,7 @@ Packages:
 	~desert.mix
 	~movies.mix
 	~scores.mix
+	~music.meg
 	~scores2.mix
 	~scores-covertops.mix
 	~transit.mix
