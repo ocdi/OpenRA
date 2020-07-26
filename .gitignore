@@ -67,3 +67,5 @@ StyleCopViolations.xml
 
 # IntelliJ files
 .idea
+
+nunit_random_seed.tmp
