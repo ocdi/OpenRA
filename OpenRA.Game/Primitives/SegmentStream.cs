@@ -59,7 +59,15 @@ namespace OpenRA.Primitives
 			set { BaseStream.Position = BaseOffset + value; }
 		}
 
-		public override int Read(byte[] buffer, int offset, int count) { return BaseStream.Read(buffer, offset, count); }
+		public override int Read(byte[] buffer, int offset, int count)
+		{
+			// ensure caller can't read past of the end of our stream
+			var limit = BaseCount - Position + offset - count;
+			if (limit < 0) count += (int)limit;
+
+			return BaseStream.Read(buffer, offset, count);
+		}
+
 		public override void Write(byte[] buffer, int offset, int count) { BaseStream.Write(buffer, offset, count); }
 		public override void Flush() { BaseStream.Flush(); }
 		public override long Seek(long offset, SeekOrigin origin)
