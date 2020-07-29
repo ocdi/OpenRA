@@ -59,23 +59,35 @@ namespace OpenRA.Mods.Cnc.FileSystem
 			private readonly List<MegFileContentReference> fileData = new List<MegFileContentReference>();
 			private readonly string name;
 
-			public MegFile(Stream s, string filename)
+			internal MegFile(FileStream s)
 			{
 				this.s = s;
-				name = filename;
 
-				ParseMegHeader(s);
-			}
-
-			private void ParseMegHeader(Stream s)
-			{
 				var reader = new BinaryReader(s);
+
 				var id1 = reader.ReadUInt32();
 				var id2 = reader.ReadUInt32();
 
 				if (!id1.Equals(HeaderId1) || !id2.Equals(HeaderId2))
 					throw new Exception("Invalid file signature for meg file");
 
+				ParseMegHeader(reader);
+			}
+
+			public MegFile(Stream s, string filename)
+			{
+				this.s = s;
+				name = filename;
+
+				ParseMegHeader(new BinaryReader(s));
+			}
+
+			/// <summary>
+			/// This method reads the file tables from a file. It is assumed the header magic bytes have already been read.
+			/// </summary>
+			/// <param name="reader">The reader of the stream</param>
+			private void ParseMegHeader(BinaryReader reader)
+			{
 				var dataStartOffset = reader.ReadUInt32();
 				var numFileNames = reader.ReadUInt32();
 				var numFiles = reader.ReadUInt32();
