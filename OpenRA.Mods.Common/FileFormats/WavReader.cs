@@ -11,6 +11,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using OpenRA.Primitives;
 
@@ -18,7 +19,7 @@ namespace OpenRA.Mods.Common.FileFormats
 {
 	public static class WavReader
 	{
-		enum WaveType { Pcm = 0x1, ImaAdpcm = 0x11 }
+		enum WaveType { Pcm = 0x1, MsAdpcm = 0x2, ImaAdpcm = 0x11 }
 
 		public static bool LoadSound(Stream s, out Func<Stream> result, out short channels, out int sampleBits, out int sampleRate)
 		{
@@ -39,8 +40,9 @@ namespace OpenRA.Mods.Common.FileFormats
 			WaveType audioType = 0;
 			var dataOffset = -1L;
 			var dataSize = -1;
+			var uncompressedSize = -1;
 			short blockAlign = -1;
-			int uncompressedSize = -1;
+			short samplesperblock = 0;
 			while (s.Position < s.Length)
 			{
 				if ((s.Position & 1) == 1)
@@ -66,7 +68,19 @@ namespace OpenRA.Mods.Common.FileFormats
 						blockAlign = s.ReadInt16();
 						sampleBits = s.ReadInt16();
 
-						s.ReadBytes(fmtChunkSize - 16);
+						if (audioType == WaveType.MsAdpcm)
+						{
+							sampleBits = 16; // unsure why this is different to the value above, but it needs to be 16 (!)
+
+							s.ReadInt16(); // extra bytes
+							samplesperblock = s.ReadInt16();
+
+							s.ReadBytes(fmtChunkSize - 16 - 4); // read the remainder of padding
+						}
+						else
+							s.ReadBytes(fmtChunkSize - 16);
+
+						// pos 70
 						break;
 					case "fact":
 						var chunkSize = s.ReadInt32();
@@ -97,7 +111,9 @@ namespace OpenRA.Mods.Common.FileFormats
 			{
 				var audioStream = SegmentStream.CreateWithoutOwningStream(s, dataOffset, dataSize);
 				if (audioType == WaveType.ImaAdpcm)
-					return new WavStream(audioStream, dataSize, blockAlign, chan, uncompressedSize);
+					return new WavStreamImaAdpcm(audioStream, dataSize, blockAlign, chan, uncompressedSize);
+				else if (audioType == WaveType.MsAdpcm)
+					return new WavStreamMsAdpcm(audioStream, dataSize, blockAlign, chan, samplesperblock);
 
 				return audioStream; // Data is already PCM format.
 			};
@@ -124,7 +140,7 @@ namespace OpenRA.Mods.Common.FileFormats
 			return length / (channels * sampleRate * bitsPerSample);
 		}
 
-		sealed class WavStream : ReadOnlyAdapterStream
+		sealed class WavStreamImaAdpcm : ReadOnlyAdapterStream
 		{
 			readonly short channels;
 			readonly int numBlocks;
@@ -137,7 +153,7 @@ namespace OpenRA.Mods.Common.FileFormats
 			int outOffset;
 			int currentBlock;
 
-			public WavStream(Stream stream, int dataSize, short blockAlign, short channels, int uncompressedSize)
+			public WavStreamImaAdpcm(Stream stream, int dataSize, short blockAlign, short channels, int uncompressedSize)
 				: base(stream)
 			{
 				this.channels = channels;
@@ -204,6 +220,127 @@ namespace OpenRA.Mods.Common.FileFormats
 				}
 
 				return ++currentBlock >= numBlocks;
+			}
+		}
+
+		sealed class WavStreamMsAdpcm : ReadOnlyAdapterStream
+		{
+			/* format docs https://wiki.multimedia.cx/index.php/Microsoft_ADPCM
+			 */
+
+			const int MsADPCMAdaptCoeffCount = 7;
+
+			static readonly int[] AdaptationTable = new[]
+			{
+				230, 230, 230, 230, 307, 409, 512, 614,
+				768, 614, 512, 409, 307, 230, 230, 230
+			};
+
+			static readonly int[] AdaptCoeff1 = new[] { 256, 512, 0, 192, 240, 460, 392 };
+
+			static readonly int[] AdaptCoeff2 = new[] { 0, -256, 0, 64, 0, -208, -232 };
+
+			readonly short channels;
+			private readonly short blockAlign;
+			private readonly short samplesperblock;
+			private readonly int numBlocks;
+
+			int currentBlock;
+
+			public WavStreamMsAdpcm(Stream stream, int dataSize, short blockAlign, short channels, short samplesperblock)
+				: base(stream)
+			{
+				this.channels = channels;
+				this.blockAlign = blockAlign;
+				this.samplesperblock = samplesperblock;
+				numBlocks = dataSize / blockAlign;
+			}
+
+			protected override bool BufferData(Stream baseStream, Queue<byte> data)
+			{
+				var samples = new short[samplesperblock * channels];
+
+				var empty = DecodeBlock(baseStream, samples);
+
+				// buffer the samples
+				foreach (var t in samples)
+				{
+					data.Enqueue((byte)t);
+					data.Enqueue((byte)(t >> 8));
+				}
+
+				return empty;
+			}
+
+			/// <summary>
+			/// Decodes a block of MS ADPCM data
+			/// </summary>
+			/// <param name="baseStream">The underlying stream to read data from</param>
+			/// <param name="samples">A block worth of PCM samples</param>
+			/// <returns>True when there is no more data or we can't continue</returns>
+			bool DecodeBlock(Stream baseStream, short[] samples)
+			{
+				var bpred = new byte[channels];
+				var chan_idelta = new short[channels];
+
+				for (var c = 0; c < channels; c++)
+					bpred[c] = baseStream.ReadUInt8();
+
+				for (var c = 0; c < channels; c++)
+					chan_idelta[c] = baseStream.ReadInt16();
+
+				for (var c = 0; c < channels; c++)
+					samples[channels + c] = baseStream.ReadInt16();
+
+				for (var c = 0; c < channels; c++)
+					samples[c] = baseStream.ReadInt16();
+
+				var k = 2 * channels;
+				for (var blockindx = channels == 1 ? 7 : 14; blockindx < blockAlign; blockindx++)
+				{
+					var bytecode = baseStream.ReadUInt8();
+					samples[k] = (short)((bytecode >> 4) & 0x0F);
+					DecodeNibble(samples, bpred, chan_idelta, k++);
+
+					samples[k] = (short)(bytecode & 0x0F);
+					DecodeNibble(samples, bpred, chan_idelta, k++);
+				}
+
+				return ++currentBlock >= numBlocks;
+			}
+
+			private void DecodeNibble(short[] samples, byte[] bpred, short[] chan_idelta, int k)
+			{
+				// This code is an adaption of the logic from libsndfile
+				var chan = k % channels;
+
+				var bytecode = (short)(samples[k] & 0xF);
+
+				// Compute next Adaptive Scale Factor (ASF)
+				var idelta = chan_idelta[chan];
+
+				chan_idelta[chan] = (short)((AdaptationTable[bytecode] * idelta) >> 8);
+				if (chan_idelta[chan] < 16)
+					chan_idelta[chan] = 16;
+
+				if ((bytecode & 0x8) > 0)
+					bytecode -= 0x10;
+
+				var predict = ((samples[k - channels] * AdaptCoeff1[bpred[chan]])
+							+ (samples[k - 2 * channels] * AdaptCoeff2[bpred[chan]])) >> 8;
+
+				var current = (bytecode * idelta) + predict;
+
+				samples[k] = ClampInt16(current);
+			}
+
+			private static short ClampInt16(int current)
+			{
+				if (current > 32767)
+					current = 32767;
+				else if (current < -32768)
+					current = -32768;
+				return (short)current;
 			}
 		}
 	}
