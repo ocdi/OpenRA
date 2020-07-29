@@ -12,13 +12,14 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using libsndfileSharp;
 using OpenRA.Primitives;
 
 namespace OpenRA.Mods.Common.FileFormats
 {
-	public static class WavReader
+	public static partial class WavReader
 	{
-		enum WaveType { Pcm = 0x1, ImaAdpcm = 0x11 }
+		enum WaveType { Pcm = 0x1, MsAdpcm = 0x2, ImaAdpcm = 0x11 }
 
 		public static bool LoadSound(Stream s, out Func<Stream> result, out short channels, out int sampleBits, out int sampleRate)
 		{
@@ -41,6 +42,7 @@ namespace OpenRA.Mods.Common.FileFormats
 			var dataSize = -1;
 			short blockAlign = -1;
 			int uncompressedSize = -1;
+			short samplesperblock = 0;
 			while (s.Position < s.Length)
 			{
 				if ((s.Position & 1) == 1)
@@ -62,11 +64,24 @@ namespace OpenRA.Mods.Common.FileFormats
 
 						channels = s.ReadInt16();
 						sampleRate = s.ReadInt32();
-						s.ReadInt32(); // Byte Rate
+						s.ReadInt32(); // Byte Rate - bytespersec
 						blockAlign = s.ReadInt16();
-						sampleBits = s.ReadInt16();
+						sampleBits = s.ReadInt16(); // bitwidth
 
+						if (audioType == WaveType.MsAdpcm)
+						{
+							samplesperblock = 128;
+
+							// s.ReadInt16(); // extra bytes
+							// samplesperblock = s.ReadInt16();
+							// var temp = s.ReadBytes(fmtChunkSize - 12); // read the padding
+						}
+
+						// else
 						s.ReadBytes(fmtChunkSize - 16);
+
+						// pos 70
+
 						break;
 					case "fact":
 						var chunkSize = s.ReadInt32();
@@ -97,7 +112,9 @@ namespace OpenRA.Mods.Common.FileFormats
 			{
 				var audioStream = SegmentStream.CreateWithoutOwningStream(s, dataOffset, dataSize);
 				if (audioType == WaveType.ImaAdpcm)
-					return new WavStream(audioStream, dataSize, blockAlign, chan, uncompressedSize);
+					return new WavStreamImaAdpcm(audioStream, dataSize, blockAlign, chan, uncompressedSize);
+				else if (audioType == WaveType.MsAdpcm)
+					return new WavStreamMsAdpcm(audioStream, dataSize, blockAlign, chan, uncompressedSize, samplesperblock);
 
 				return audioStream; // Data is already PCM format.
 			};
@@ -124,7 +141,7 @@ namespace OpenRA.Mods.Common.FileFormats
 			return length / (channels * sampleRate * bitsPerSample);
 		}
 
-		sealed class WavStream : ReadOnlyAdapterStream
+		sealed class WavStreamImaAdpcm : ReadOnlyAdapterStream
 		{
 			readonly short channels;
 			readonly int numBlocks;
@@ -137,7 +154,7 @@ namespace OpenRA.Mods.Common.FileFormats
 			int outOffset;
 			int currentBlock;
 
-			public WavStream(Stream stream, int dataSize, short blockAlign, short channels, int uncompressedSize)
+			public WavStreamImaAdpcm(Stream stream, int dataSize, short blockAlign, short channels, int uncompressedSize)
 				: base(stream)
 			{
 				this.channels = channels;

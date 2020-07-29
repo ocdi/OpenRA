@@ -1,0 +1,236 @@
+﻿#region Copyright & License Information
+/*
+ * Copyright 2007-2020 The OpenRA Developers (see AUTHORS)
+ * This file is part of OpenRA, which is free software. It is made
+ * available to you under the terms of the GNU General Public License
+ * as published by the Free Software Foundation, either version 3 of
+ * the License, or (at your option) any later version. For more
+ * information, see COPYING.
+ */
+#endregion
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using OpenRA.Primitives;
+
+namespace OpenRA.Mods.Common.FileFormats
+{
+	public static partial class WavReader
+	{
+		sealed class WavStreamMsAdpcm : ReadOnlyAdapterStream
+		{
+			/* format docs https://wiki.multimedia.cx/index.php/Microsoft_ADPCM
+			 */
+
+			const int IDELTACOUNT = 3;
+			const int MsADPCMAdaptCoeffCount = 7;
+
+			internal static int[] AdaptationTable = new[]
+			{
+				230, 230, 230, 230, 307, 409, 512, 614,
+				768, 614, 512, 409, 307, 230, 230, 230
+			};
+
+			internal static int[] AdaptCoeff1 = new[] { 256, 512, 0, 192, 240, 460, 392 };
+
+			internal static int[] AdaptCoeff2 = new[] { 0, -256, 0, 64, 0, -208, -232 };
+
+			readonly short channels;
+			private readonly short samplesperblock;
+			readonly int blockDataSize;
+			readonly int outputSize;
+			readonly int[] predictor;
+			readonly int[] index;
+
+			readonly byte[] interleaveBuffer;
+
+			int blockcount;
+			int blocksize;
+
+			public WavStreamMsAdpcm(Stream stream, int dataSize, short blockAlign, short channels, int uncompressedSize, short samplesperblock)
+				: base(stream)
+			{
+				this.channels = channels;
+				this.samplesperblock = samplesperblock;
+				blockcount = dataSize / blockAlign;
+				blockDataSize = blockAlign - (channels * 4);
+				outputSize = uncompressedSize * channels * 2;
+				predictor = new int[channels];
+				index = new int[channels];
+
+				interleaveBuffer = new byte[channels * 16];
+
+				blocksize = samplesperblock * channels; // todo verify this
+			}
+
+			protected override bool BufferData(Stream baseStream, Queue<byte> data)
+			{
+				var samples = new short[samplesperblock * channels];
+
+				if (!DecodeBlock(baseStream, samples))
+					return false;
+
+				// buffer the samples
+				foreach (var t in samples)
+				{
+					data.Enqueue((byte)t);
+					data.Enqueue((byte)(t >> 8));
+				}
+
+				return true;
+			}
+
+			bool DecodeBlock(Stream baseStream, short[] samples)
+			{
+				int chan, k, blockindx, sampleindx;
+				short bytecode;
+				short[] bpred = new short[2], chan_idelta = new short[2];
+
+				int predict;
+				int current;
+				int idelta;
+
+				var block = baseStream.ReadBytes(blocksize);
+				if (block.Length != blocksize)
+				{
+					Debug.WriteLine(string.Format("Read insufficient bytes from the buffer, expected {0} but got {1}", blocksize, block.Length));
+					return false;
+
+					// //psf_log_printf(psf, "*** Warning : short read (%d != %d).\n", k, pms.blocksize);
+					// if (k <= 0)
+					// return true;
+				}
+
+				if (channels == 1)
+				{
+					bpred[0] = AssertPred(block[0]);
+
+					// read a short from the bytes
+					chan_idelta[0] = (short)(block[1] | (block[2]) << 8);
+					chan_idelta[1] = 0;
+
+					samples[1] = (short)(block[3] | (block[4] << 8));
+					samples[0] = (short)(block[5] | (block[6] << 8));
+					blockindx = 7;
+				}
+				else
+				{
+					bpred[0] = AssertPred(block[0]);
+					bpred[1] = AssertPred(block[1]);
+
+					chan_idelta[0] = (short)(block[2] | (block[3] << 8));
+					chan_idelta[1] = (short)(block[4] | (block[5] << 8));
+
+					samples[2] = (short)(block[6] | (block[7] << 8));
+					samples[3] = (short)(block[8] | (block[9] << 8));
+
+					samples[0] = (short)(block[10] | (block[11] << 8));
+					samples[1] = (short)(block[12] | (block[13] << 8));
+
+					blockindx = 14;
+				}
+
+				/*--------------------------------------------------------
+	This was left over from a time when calculations were done
+	as ints rather than shorts. Keep this around as a reminder
+	in case I ever find a file which decodes incorrectly.
+	if (chan_idelta [0] & 0x8000)
+		chan_idelta [0] -= 0x10000 ;
+	if (chan_idelta [1] & 0x8000)
+		chan_idelta [1] -= 0x10000 ;
+	--------------------------------------------------------*/
+
+				/* Pull apart the packed 4 bit samples and store them in their
+				** correct sample positions.
+				*/
+
+				sampleindx = 2 * channels;
+				while (blockindx < blocksize)
+				{
+					bytecode = block[blockindx++];
+					samples[sampleindx++] = (short)((bytecode >> 4) & 0x0F);
+					samples[sampleindx++] = (short)(bytecode & 0x0F);
+				}
+
+				/* Decode the encoded 4 bit samples. */
+
+				for (k = 2 * channels; k < (samplesperblock * channels); k++)
+				{
+					chan = (channels > 1) ? (k % 2) : 0;
+
+					bytecode = (short)(samples[k] & 0xF);
+
+					/* Compute next Adaptive Scale Factor (ASF) */
+					idelta = chan_idelta[chan];
+					chan_idelta[chan] = (short)((AdaptationTable[bytecode] * idelta) >> 8);  /* => / 256 => FIXED_POINT_ADAPTATION_BASE == 256 */
+					if (chan_idelta[chan] < 16)
+						chan_idelta[chan] = 16;
+					if ((bytecode & 0x8) > 0)
+						bytecode -= 0x10;
+
+					predict = ((samples[k - channels] * AdaptCoeff1[bpred[chan]])
+								+ (samples[k - 2 * channels] * AdaptCoeff2[bpred[chan]])) >> 8; /* => / 256 => FIXED_POINT_COEFF_BASE == 256 */
+					current = (bytecode * idelta) + predict;
+
+					if (current > 32767)
+						current = 32767;
+					else if (current < -32768)
+						current = -32768;
+
+					samples[k] = (short)current;
+				}
+
+				return true;
+			}
+
+			private static short AssertPred(byte value)
+			{
+				if (value > MsADPCMAdaptCoeffCount)
+					throw new Exception(string.Format("MS ADPCM synchronisation error ({0} should be < {1})", value, MsADPCMAdaptCoeffCount));
+
+				return value;
+			}
+
+			static void ChoosePredictor(uint channels, short[] data, uint[] block_pred, uint[] idelta)
+			{
+				uint chan, k, bpred, idelta_sum, best_bpred, best_idelta;
+
+				for (chan = 0; chan < channels; chan++)
+				{
+					best_bpred = best_idelta = 0;
+
+					for (bpred = 0; bpred < 7; bpred++)
+					{
+						idelta_sum = 0;
+						for (k = 2; k < 2 + IDELTACOUNT; k++)
+							idelta_sum += (uint)Math.Abs(data[k * channels] - ((data[(k - 1) * channels] * AdaptCoeff1[bpred] + data[(k - 2) * channels] * AdaptCoeff2[bpred]) >> 8));
+						idelta_sum /= (4 * IDELTACOUNT);
+
+						if (bpred == 0 || idelta_sum < best_idelta)
+						{
+							best_bpred = bpred;
+							best_idelta = idelta_sum;
+						}
+
+						if (idelta_sum == 0)
+						{
+							best_bpred = bpred;
+							best_idelta = 16;
+							break;
+						}
+					}
+
+					if (best_idelta < 16)
+						best_idelta = 16;
+
+					block_pred[chan] = best_bpred;
+					idelta[chan] = best_idelta;
+				}
+
+				return;
+			} /* choose_predictor */
+		}
+	}
+}
