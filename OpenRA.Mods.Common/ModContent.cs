@@ -19,8 +19,11 @@ namespace OpenRA
 	{
 		public enum SourceType { Disc, Install, Steam }
 
-		public const string SteamRegistryPath = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App ";
-		public const string SteamRegistryValue = "InstallLocation";
+		public static Dictionary<string, string> SteamRegistryPaths = new Dictionary<string, string>
+		{
+			{ @"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Valve\Steam",  "InstallPath" },
+			{ @"HKEY_CURRENT_USER\SOFTWARE\Valve\Steam", "SteamPath" }
+		};
 
 		public class ModPackage
 		{
