@@ -496,10 +496,13 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 		{
 			if (source.Type == ModContent.SourceType.Steam)
 			{
-				if (source.SteamAppId == null || Platform.CurrentPlatform != PlatformType.Windows)
-					return null;
+				if (source.SteamAppId == null) return null;
 
-				var path = Microsoft.Win32.Registry.GetValue(ModContent.SteamRegistryPath + source.SteamAppId, ModContent.SteamRegistryValue, null) as string;
+				var steamRoot = FindSteamRoot();
+				if (steamRoot == null) return null;
+
+				var path = FindAppRoot(steamRoot, source);
+
 				if (path == null || !IsValidSourcePath(path, source))
 					return null;
 
@@ -527,6 +530,77 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				foreach (var volume in volumes)
 					if (IsValidSourcePath(volume, source))
 						return volume;
+
+			return null;
+		}
+
+		private string FindSteamRoot()
+		{
+			if (Environment.OSVersion.Platform == PlatformID.Unix || Environment.OSVersion.Platform == PlatformID.MacOSX)
+				return Path.Combine(Environment.GetEnvironmentVariable("HOME"), "Library/Application Support/Steam/steamapps");
+			else if (Platform.CurrentPlatform != PlatformType.Windows)
+				return null;
+
+			// we assume we're on windows and can use Registry
+			foreach (var rp in ModContent.SteamRegistryPaths)
+			{
+				var steamFolder = Microsoft.Win32.Registry.GetValue(rp.Key, rp.Value, null) as string;
+				if (steamFolder != null)
+				{
+					var steamRoot = Path.Combine(steamFolder, "steamapps");
+					if (Directory.Exists(steamRoot)) return steamRoot;
+				}
+			}
+
+			return null;
+		}
+
+		string FindAppRoot(string steamRoot, ModContent.ModSource source)
+		{
+			// within the library there is either a file with name appmanifest_STEAMAPPID.acf
+			// or there are alternate locations to search in libraryfolders.vdf
+			var path = FindAppRootInLibrary(steamRoot, source);
+			if (path != null) return path;
+
+			var additional = Path.Combine(steamRoot, "libraryfolders.vdf");
+			if (!File.Exists(additional)) return null;
+
+			var libraryFolders = ACFObject.ParseACF(File.ReadAllText(additional));
+
+			if (libraryFolders == null || !libraryFolders.Objects.ContainsKey("LibraryFolders")) return null;
+
+			foreach (var paths in libraryFolders.Objects["LibraryFolders"].Strings)
+			{
+				int idx;
+				try
+				{
+					// it appears to use numeric indexes
+					if (int.TryParse(paths.Key, out idx) && Directory.Exists(paths.Value))
+					{
+						var steamLibrary = Path.Combine(paths.Value, "steamapps");
+						return FindAppRoot(steamLibrary, source);
+					}
+				}
+				catch (IOException)
+				{
+				}
+			}
+
+			return null;
+		}
+
+		string FindAppRootInLibrary(string library, ModContent.ModSource source)
+		{
+			var manifestName = Path.Combine(library, string.Format("appmanifest_{0}.acf", source.SteamAppId));
+
+			if (!File.Exists(manifestName)) return null;
+
+			var manifestData = File.ReadAllText(manifestName);
+
+			var manifest = ACFObject.ParseACF(manifestData);
+
+			if (manifest.Objects.ContainsKey("AppState") && manifest.Objects["AppState"].Strings.ContainsKey("installdir"))
+				return Path.Combine(library, "common", manifest.Objects["AppState"].Strings["installdir"]);
 
 			return null;
 		}
@@ -687,6 +761,81 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			primaryButton.Visible = false;
 			secondaryButton.Disabled = true;
 			Game.RunAfterTick(Ui.ResetTooltips);
+		}
+	}
+
+	class ACFObject
+	{
+		public Dictionary<string, ACFObject> Objects;
+		public Dictionary<string, string> Strings;
+
+		public ACFObject()
+		{
+			Objects = new Dictionary<string, ACFObject>();
+			Strings = new Dictionary<string, string>();
+		}
+
+		public static int FindEnding(string str, char open, char close, int startIndex)
+		{
+			var openItem = 0;
+			var closeItem = 0;
+			for (var i = startIndex; i < str.Length; i++)
+			{
+				if (str[i] == open)
+					openItem++;
+
+				if (str[i] == close)
+				{
+					closeItem++;
+					if (closeItem > openItem)
+						return i;
+				}
+			}
+
+			throw new Exception("Not enough closing characters!");
+		}
+
+		public static ACFObject ParseACF(string data)
+		{
+			// double check the file is valid
+			var quote = data.Count(x => x == '"');
+			var braceleft = data.Count(x => x == '{');
+			var braceright = data.Count(x => x == '}');
+
+			if (!((braceleft == braceright) && (quote % 2 == 0))) return null;
+
+			var result = new ACFObject();
+			var len = data.Length;
+			var currentPos = 0;
+			while (len > currentPos)
+			{
+				var itemKeyStart = data.IndexOf('"', currentPos);
+				if (itemKeyStart == -1)
+					break;
+				var itemKeyEnd = data.IndexOf('"', itemKeyStart + 1);
+				currentPos = itemKeyEnd + 1;
+				var itemKey = data.Substring(itemKeyStart + 1, itemKeyEnd - itemKeyStart - 1);
+
+				var itemStringStart = data.IndexOf('"', currentPos);
+				var itemObjectStart = data.IndexOf('{', currentPos);
+
+				if (itemObjectStart == -1 || itemStringStart < itemObjectStart)
+				{
+					var itemStringEnd = data.IndexOf('"', itemStringStart + 1);
+					var itemString = data.Substring(itemStringStart + 1, itemStringEnd - itemStringStart - 1);
+					currentPos = itemStringEnd + 1;
+					result.Strings.Add(itemKey, itemString);
+				}
+				else
+				{
+					var itemObjectEnd = FindEnding(data, '{', '}', itemObjectStart + 1);
+					var itemObject = ParseACF(data.Substring(itemObjectStart + 1, itemObjectEnd - itemObjectStart - 1));
+					currentPos = itemObjectEnd + 1;
+					result.Objects.Add(itemKey, itemObject);
+				}
+			}
+
+			return result;
 		}
 	}
 }
