@@ -4,7 +4,7 @@ ra-remaster-steam: C&C Remastered (Steam version, English)
 	IDFiles:
 		Data/CNCDATA/RED_ALERT/CD1/REDALERT.MIX: 0e58f4b54f44f6cd29fecf8cf379d33cf2d4caef
 	Install:
-		copy: .
+		link: .
 			^Content/ra/v2/expand/expand2.mix: Data/CNCDATA/RED_ALERT/AFTERMATH/EXPAND2.MIX
 			^Content/ra/v2/expand/hires1.mix: Data/CNCDATA/RED_ALERT/AFTERMATH/HIRES1.MIX
 			^Content/ra/v2/expand/lores1.mix: Data/CNCDATA/RED_ALERT/AFTERMATH/LORES1.MIX
