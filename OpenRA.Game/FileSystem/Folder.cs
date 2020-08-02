@@ -18,6 +18,7 @@ namespace OpenRA.FileSystem
 	public sealed class Folder : IReadWritePackage
 	{
 		readonly string path;
+		private IDictionary<string, string> linkCache = new Dictionary<string, string>();
 
 		public Folder(string path)
 		{
@@ -33,7 +34,17 @@ namespace OpenRA.FileSystem
 			get
 			{
 				foreach (var filename in Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly))
-					yield return Path.GetFileName(filename);
+				{
+					if (filename.EndsWith(".link"))
+					{
+						var rawFile = Path.GetFileName(filename.Substring(0, filename.Length - 5));
+						if (ContainsLink(rawFile))
+							yield return rawFile;
+					}
+					else
+						yield return Path.GetFileName(filename);
+				}
+
 				foreach (var filename in Directory.GetDirectories(path))
 					yield return Path.GetFileName(filename);
 			}
@@ -41,14 +52,41 @@ namespace OpenRA.FileSystem
 
 		public Stream GetStream(string filename)
 		{
-			try { return File.OpenRead(Path.Combine(path, filename)); }
+			try
+			{
+				// if we have not already determined the file path we can use the ContainsLink method that will
+				// verify it exists and return true if the linked content exists
+				var combined = linkCache.ContainsKey(filename) || ContainsLink(filename)
+					? linkCache[filename]
+					: Path.Combine(path, filename);
+
+				return File.OpenRead(combined);
+			}
 			catch { return null; }
 		}
 
 		public bool Contains(string filename)
 		{
 			var combined = Path.Combine(path, filename);
-			return combined.StartsWith(path, StringComparison.Ordinal) && File.Exists(combined);
+			return (combined.StartsWith(path, StringComparison.Ordinal) && File.Exists(combined)) || ContainsLink(filename);
+		}
+
+		public bool ContainsLink(string filename)
+		{
+			var combined = Path.Combine(path, filename + ".link");
+
+			if (!combined.StartsWith(path, StringComparison.Ordinal) || !File.Exists(combined))
+				return false;
+
+			var linkDest = File.ReadAllText(combined);
+
+			if (File.Exists(linkDest))
+			{
+				linkCache[filename] = linkDest;
+				return true;
+			}
+
+			return false;
 		}
 
 		public IReadOnlyPackage OpenPackage(string filename, FileSystem context)

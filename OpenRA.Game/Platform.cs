@@ -191,7 +191,11 @@ namespace OpenRA
 
 			// Paths starting with ^ are relative to the support dir
 			if (IsPathRelativeToSupportDirectory(path))
+			{
 				path = SupportDir + path.Substring(1);
+				if (!File.Exists(path) && File.Exists(path + ".link"))
+					path = File.ReadAllText(path + ".link");
+			}
 
 			// Paths starting with . are relative to the game dir
 			if (path == ".")

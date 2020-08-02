@@ -212,6 +212,30 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 					{
 						switch (i.Key)
 						{
+							case "link":
+							{
+								var sourceDir = Path.Combine(path, i.Value.Value);
+
+								foreach (var node in i.Value.Nodes)
+								{
+									var sourcePath = Path.Combine(sourceDir, node.Value.Value);
+									var targetPath = Platform.ResolvePath(node.Key);
+									var targetLinkPath = targetPath + ".link";
+									if (File.Exists(targetPath))
+									{
+										Log.Write("install", "Ignoring installed file " + targetPath);
+										continue;
+									}
+
+									extracted.Add(targetLinkPath);
+									Directory.CreateDirectory(Path.GetDirectoryName(targetLinkPath));
+
+									File.WriteAllText(targetLinkPath, sourcePath);
+								}
+
+								break;
+							}
+
 							case "copy":
 							{
 								var sourceDir = Path.Combine(path, i.Value.Value);
