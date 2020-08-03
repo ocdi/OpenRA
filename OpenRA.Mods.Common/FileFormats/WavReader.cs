@@ -12,7 +12,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using libsndfileSharp;
 using OpenRA.Primitives;
 
 namespace OpenRA.Mods.Common.FileFormats
@@ -64,24 +63,23 @@ namespace OpenRA.Mods.Common.FileFormats
 
 						channels = s.ReadInt16();
 						sampleRate = s.ReadInt32();
-						s.ReadInt32(); // Byte Rate - bytespersec
+						s.ReadInt32(); // Byte Rate - nAvgBytesPerSec
 						blockAlign = s.ReadInt16();
 						sampleBits = s.ReadInt16(); // bitwidth
 
 						if (audioType == WaveType.MsAdpcm)
 						{
-							samplesperblock = 128;
+							sampleBits = 16; // unsure why this is different to the value above, but it needs to be 16 (!)
 
-							// s.ReadInt16(); // extra bytes
-							// samplesperblock = s.ReadInt16();
-							// var temp = s.ReadBytes(fmtChunkSize - 12); // read the padding
+							s.ReadInt16(); // extra bytes
+							samplesperblock = s.ReadInt16();
+
+							s.ReadBytes(fmtChunkSize - 16 - 4); // read the remainder of padding
 						}
-
-						// else
-						s.ReadBytes(fmtChunkSize - 16);
+						else
+							s.ReadBytes(fmtChunkSize - 16);
 
 						// pos 70
-
 						break;
 					case "fact":
 						var chunkSize = s.ReadInt32();

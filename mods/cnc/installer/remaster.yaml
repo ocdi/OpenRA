@@ -5,6 +5,7 @@ remaster: C&C Remastered (Steam version, English)
 		Data/CNCDATA/TIBERIAN_DAWN/CD1/CONQUER.MIX: 3f891c8dc0864f654e1710430ea4ff34c3715e97
 	Install:
 		link: .
+			^Content/cncrm/music.meg: steamapps\common\CnCRemastered\Data\MUSIC.MEG
 			^Content/cnc/conquer.mix: Data/CNCDATA/TIBERIAN_DAWN/CD1/CONQUER.MIX
 			^Content/cnc/desert.mix: Data/CNCDATA/TIBERIAN_DAWN/CD1/DESERT.MIX
 			^Content/cnc/general.mix: Data/CNCDATA/TIBERIAN_DAWN/CD1/GENERAL.MIX

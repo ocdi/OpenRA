@@ -24,7 +24,6 @@ namespace OpenRA.Mods.Common.FileFormats
 			/* format docs https://wiki.multimedia.cx/index.php/Microsoft_ADPCM
 			 */
 
-			const int IDELTACOUNT = 3;
 			const int MsADPCMAdaptCoeffCount = 7;
 
 			internal static int[] AdaptationTable = new[]
@@ -38,39 +37,28 @@ namespace OpenRA.Mods.Common.FileFormats
 			internal static int[] AdaptCoeff2 = new[] { 0, -256, 0, 64, 0, -208, -232 };
 
 			readonly short channels;
+			private readonly short blockAlign;
 			private readonly short samplesperblock;
 			readonly int blockDataSize;
-			readonly int outputSize;
-			readonly int[] predictor;
-			readonly int[] index;
+			private readonly int numBlocks;
 
-			readonly byte[] interleaveBuffer;
-
-			int blockcount;
-			int blocksize;
+			int currentBlock;
 
 			public WavStreamMsAdpcm(Stream stream, int dataSize, short blockAlign, short channels, int uncompressedSize, short samplesperblock)
 				: base(stream)
 			{
 				this.channels = channels;
+				this.blockAlign = blockAlign;
 				this.samplesperblock = samplesperblock;
-				blockcount = dataSize / blockAlign;
 				blockDataSize = blockAlign - (channels * 4);
-				outputSize = uncompressedSize * channels * 2;
-				predictor = new int[channels];
-				index = new int[channels];
-
-				interleaveBuffer = new byte[channels * 16];
-
-				blocksize = samplesperblock * channels; // todo verify this
+				numBlocks = dataSize / blockAlign;
 			}
 
 			protected override bool BufferData(Stream baseStream, Queue<byte> data)
 			{
 				var samples = new short[samplesperblock * channels];
 
-				if (!DecodeBlock(baseStream, samples))
-					return false;
+				var empty = DecodeBlock(baseStream, samples);
 
 				// buffer the samples
 				foreach (var t in samples)
@@ -79,9 +67,15 @@ namespace OpenRA.Mods.Common.FileFormats
 					data.Enqueue((byte)(t >> 8));
 				}
 
-				return true;
+				return empty;
 			}
 
+			/// <summary>
+			/// Decodes a block of MS ADPCM data
+			/// </summary>
+			/// <param name="baseStream">The underlying stream to read data from</param>
+			/// <param name="samples">A block worth of PCM samples</param>
+			/// <returns>True when there is no more data or we can't continue</returns>
 			bool DecodeBlock(Stream baseStream, short[] samples)
 			{
 				int chan, k, blockindx, sampleindx;
@@ -92,15 +86,11 @@ namespace OpenRA.Mods.Common.FileFormats
 				int current;
 				int idelta;
 
-				var block = baseStream.ReadBytes(blocksize);
-				if (block.Length != blocksize)
+				var block = baseStream.ReadBytes(blockAlign);
+				if (block.Length != blockAlign)
 				{
-					Debug.WriteLine(string.Format("Read insufficient bytes from the buffer, expected {0} but got {1}", blocksize, block.Length));
-					return false;
-
-					// //psf_log_printf(psf, "*** Warning : short read (%d != %d).\n", k, pms.blocksize);
-					// if (k <= 0)
-					// return true;
+					Debug.WriteLine(string.Format("Read insufficient bytes from the buffer, expected {0} but got {1}", blockAlign, block.Length));
+					return true;
 				}
 
 				if (channels == 1)
@@ -147,7 +137,7 @@ namespace OpenRA.Mods.Common.FileFormats
 				*/
 
 				sampleindx = 2 * channels;
-				while (blockindx < blocksize)
+				while (blockindx < blockDataSize)
 				{
 					bytecode = block[blockindx++];
 					samples[sampleindx++] = (short)((bytecode >> 4) & 0x0F);
@@ -182,7 +172,7 @@ namespace OpenRA.Mods.Common.FileFormats
 					samples[k] = (short)current;
 				}
 
-				return true;
+				return ++currentBlock >= numBlocks;
 			}
 
 			private static short AssertPred(byte value)
@@ -192,45 +182,6 @@ namespace OpenRA.Mods.Common.FileFormats
 
 				return value;
 			}
-
-			static void ChoosePredictor(uint channels, short[] data, uint[] block_pred, uint[] idelta)
-			{
-				uint chan, k, bpred, idelta_sum, best_bpred, best_idelta;
-
-				for (chan = 0; chan < channels; chan++)
-				{
-					best_bpred = best_idelta = 0;
-
-					for (bpred = 0; bpred < 7; bpred++)
-					{
-						idelta_sum = 0;
-						for (k = 2; k < 2 + IDELTACOUNT; k++)
-							idelta_sum += (uint)Math.Abs(data[k * channels] - ((data[(k - 1) * channels] * AdaptCoeff1[bpred] + data[(k - 2) * channels] * AdaptCoeff2[bpred]) >> 8));
-						idelta_sum /= (4 * IDELTACOUNT);
-
-						if (bpred == 0 || idelta_sum < best_idelta)
-						{
-							best_bpred = bpred;
-							best_idelta = idelta_sum;
-						}
-
-						if (idelta_sum == 0)
-						{
-							best_bpred = bpred;
-							best_idelta = 16;
-							break;
-						}
-					}
-
-					if (best_idelta < 16)
-						best_idelta = 16;
-
-					block_pred[chan] = best_bpred;
-					idelta[chan] = best_idelta;
-				}
-
-				return;
-			} /* choose_predictor */
 		}
 	}
 }
