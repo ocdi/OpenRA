@@ -20,19 +20,21 @@ using OpenRA.Primitives;
 namespace OpenRA.Mods.Cnc.FileSystem
 {
 	/// <summary>
-	/// This class supports loading of the .meg V3 file format with the reference
-	/// documentation here https://modtools.petrolution.net/docs/MegFileFormat
-	/// There are 3 variants, and encrypted support that have not been implemented yet
+	/// This class supports loading unencrypted V3 .meg files using
+	/// reference documentation from here https://modtools.petrolution.net/docs/MegFileFormat
 	/// </summary>
 	public class MegV3Loader : IPackageLoader
 	{
 		public bool TryParsePackage(Stream s, string filename, OpenRA.FileSystem.FileSystem context, out IReadOnlyPackage package)
 		{
-			var reader = new BinaryReader(s);
-			var id1 = reader.ReadUInt32();
-			var id2 = reader.ReadUInt32();
+			var position = s.Position;
 
-			if (!id1.Equals(HeaderId1) || !id2.Equals(HeaderId2))
+			var id1 = s.ReadUInt32();
+			var id2 = s.ReadUInt32();
+
+			s.Position = position;
+
+			if (id1 != HeaderId1 || id2 != HeaderId2)
 			{
 				package = null;
 				return false;
@@ -42,36 +44,23 @@ namespace OpenRA.Mods.Cnc.FileSystem
 			return true;
 		}
 
-		internal const int HeaderNumberOfFileNamesOffset = 0xC;
-		internal const int HeaderNumberOfFilesOffset = 0x10;
-		internal const int HeaderFileTableSizeOffset = 0x14;
-		internal const int HeaderFileNameTableStartOffset = 0x18;
+		const int HeaderFileNameTableStartOffset = 0x18;
 
-		internal const uint HeaderId1 = 0xffffffff;
-		internal const uint HeaderId2 = 0x3F7D70A4;
+		const uint HeaderId1 = 0xffffffff;
+		const uint HeaderId2 = 0x3F7D70A4;
 
 		public sealed class MegFile : IReadOnlyPackage
 		{
-			private readonly Stream s;
+			readonly Stream s;
 
-			private readonly List<string> contents = new List<string>();
+			readonly List<string> contents = new List<string>();
 
-			private readonly List<MegFileContentReference> fileData = new List<MegFileContentReference>();
-			private readonly string name;
+			readonly List<MegFileContentReference> fileData = new List<MegFileContentReference>();
+			readonly string name;
 
 			internal MegFile(FileStream s)
+				: this(s, s.Name)
 			{
-				this.s = s;
-
-				var reader = new BinaryReader(s);
-
-				var id1 = reader.ReadUInt32();
-				var id2 = reader.ReadUInt32();
-
-				if (!id1.Equals(HeaderId1) || !id2.Equals(HeaderId2))
-					throw new Exception("Invalid file signature for meg file");
-
-				ParseMegHeader(reader);
 			}
 
 			public MegFile(Stream s, string filename)
@@ -79,22 +68,28 @@ namespace OpenRA.Mods.Cnc.FileSystem
 				this.s = s;
 				name = filename;
 
-				ParseMegHeader(new BinaryReader(s));
+				var id1 = s.ReadUInt32();
+				var id2 = s.ReadUInt32();
+
+				if (id1 != HeaderId1 || id2 != HeaderId2)
+					throw new Exception("Invalid file signature for meg file");
+
+				ParseMegHeader(s);
 			}
 
 			/// <summary>
 			/// This method reads the file tables from a file. It is assumed the header magic bytes have already been read.
 			/// </summary>
 			/// <param name="reader">The reader of the stream</param>
-			private void ParseMegHeader(BinaryReader reader)
+			private void ParseMegHeader(Stream reader)
 			{
 				var dataStartOffset = reader.ReadUInt32();
 				var numFileNames = reader.ReadUInt32();
 				var numFiles = reader.ReadUInt32();
 				var fileNameTableSize = reader.ReadUInt32();
 
-				// the file names are an indexed array of strings
-				for (uint i = 0; i < numFileNames; i++)
+				// The file names are an indexed array of strings
+				for (var i = 0; i < numFileNames; i++)
 				{
 					var fileNameLength = reader.ReadUInt16();
 					var fileNameBytes = reader.ReadBytes(fileNameLength);
@@ -103,29 +98,28 @@ namespace OpenRA.Mods.Cnc.FileSystem
 					contents.Add(fileName);
 				}
 
-				// the header indicates where we should be, so verify it
-				if (reader.BaseStream.Position != fileNameTableSize + HeaderFileNameTableStartOffset)
+				// The header indicates where we should be, so verify it
+				if (reader.Position != fileNameTableSize + HeaderFileNameTableStartOffset)
 					throw new Exception("File name table in .meg file inconsistent");
 
-				// now we load each file entry and associated info
+				// Now we load each file entry and associated info
 				for (var i = 0; i < numFiles; i++)
 				{
 					var flags = reader.ReadUInt16();
-					if (flags != 0) throw new Exception("Encrypted files are not supported or expected.");
+					if (flags != 0)
+						throw new Exception("Encrypted files are not supported or expected.");
 
 					var crc = reader.ReadUInt32();
-					var fileRecordIndex = reader.ReadUInt32();
+					reader.ReadUInt32(); // fileRecordIndex, which is unused
 					var fileSize = reader.ReadUInt32();
 					var fileStartOffset = reader.ReadUInt32();
 					var fileNameIndex = reader.ReadUInt16();
 
-					fileData.Add(new MegFileContentReference(crc, fileRecordIndex, fileSize, fileStartOffset, fileNameIndex));
+					fileData.Add(new MegFileContentReference(crc, fileSize, fileStartOffset, fileNameIndex));
 				}
 
-				if (reader.BaseStream.Position != dataStartOffset)
-				{
+				if (reader.Position != dataStartOffset)
 					throw new Exception("Expected to be at data start offset");
-				}
 			}
 
 			public string Name { get { return name; } }
@@ -142,6 +136,7 @@ namespace OpenRA.Mods.Cnc.FileSystem
 						var reference = fileData.FirstOrDefault(a => a.FileNameTableRecordIndex == index);
 						return new PackageEntry(reference.Crc32, reference.FileStartOffsetInBytes, reference.FileSizeInBytes);
 					});
+
 					return new ReadOnlyDictionary<string, PackageEntry>(absoluteIndex);
 				}
 			}
@@ -158,7 +153,7 @@ namespace OpenRA.Mods.Cnc.FileSystem
 
 			public Stream GetStream(string filename)
 			{
-				// look up the index of the filename
+				// Look up the index of the filename
 				var index = contents.IndexOf(filename);
 				var reference = fileData.FirstOrDefault(a => a.FileNameTableRecordIndex == index);
 
@@ -180,27 +175,24 @@ namespace OpenRA.Mods.Cnc.FileSystem
 			}
 		}
 
-		internal struct MegFileContentReference
+		struct MegFileContentReference
 		{
-			public MegFileContentReference(uint crc32, uint fileTableRecordIndex, uint fileSizeInBytes,
+			public MegFileContentReference(uint crc32, uint fileSizeInBytes,
 				uint fileStartOffsetInBytes, uint fileNameTableIndex)
 			{
 				Crc32 = crc32;
-				FileTableRecordIndex = fileTableRecordIndex;
 				FileSizeInBytes = fileSizeInBytes;
 				FileStartOffsetInBytes = fileStartOffsetInBytes;
 				FileNameTableRecordIndex = fileNameTableIndex;
 			}
 
-			public uint Crc32;
+			public readonly uint Crc32;
 
-			public uint FileStartOffsetInBytes;
+			public readonly uint FileStartOffsetInBytes;
 
-			public uint FileSizeInBytes;
+			public readonly uint FileSizeInBytes;
 
-			public uint FileTableRecordIndex;
-
-			public uint FileNameTableRecordIndex;
+			public readonly uint FileNameTableRecordIndex;
 		}
 	}
 }
