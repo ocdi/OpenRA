@@ -246,10 +246,20 @@ namespace OpenRA.Mods.Common.FileFormats
 			private readonly int numBlocks;
 
 			int currentBlock;
+			private FileStream f;
 
 			public WavStreamMsAdpcm(Stream stream, int dataSize, short blockAlign, short channels, short samplesperblock)
 				: base(stream)
 			{
+				var pos = stream.Position;
+				using (var f = File.OpenWrite("d:\\dev\\stream.raw"))
+				{
+					stream.CopyTo(f);
+				}
+
+				f = File.OpenWrite("D:\\dev\\stream-wav.raw");
+				stream.Position = pos;
+
 				this.channels = channels;
 				this.blockAlign = blockAlign;
 				this.samplesperblock = samplesperblock;
@@ -265,6 +275,9 @@ namespace OpenRA.Mods.Common.FileFormats
 				// buffer the samples
 				foreach (var t in samples)
 				{
+					f.WriteByte((byte)t);
+					f.WriteByte((byte)(t >> 8));
+
 					data.Enqueue((byte)t);
 					data.Enqueue((byte)(t >> 8));
 				}
