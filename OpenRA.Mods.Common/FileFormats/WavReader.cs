@@ -42,7 +42,7 @@ namespace OpenRA.Mods.Common.FileFormats
 			var dataSize = -1;
 			var uncompressedSize = -1;
 			short blockAlign = -1;
-			short samplesperblock = 0;
+			short samplesPerBlock = 0;
 			while (s.Position < s.Length)
 			{
 				if ((s.Position & 1) == 1)
@@ -73,7 +73,7 @@ namespace OpenRA.Mods.Common.FileFormats
 							sampleBits = 16; // unsure why this is different to the value above, but it needs to be 16 (!)
 
 							s.ReadInt16(); // extra bytes
-							samplesperblock = s.ReadInt16();
+							samplesPerBlock = s.ReadInt16();
 
 							s.ReadBytes(fmtChunkSize - 16 - 4); // read the remainder of padding
 						}
@@ -113,7 +113,7 @@ namespace OpenRA.Mods.Common.FileFormats
 				if (audioType == WaveType.ImaAdpcm)
 					return new WavStreamImaAdpcm(audioStream, dataSize, blockAlign, chan, uncompressedSize);
 				else if (audioType == WaveType.MsAdpcm)
-					return new WavStreamMsAdpcm(audioStream, dataSize, blockAlign, chan, samplesperblock);
+					return new WavStreamMsAdpcm(audioStream, dataSize, blockAlign, chan, samplesPerBlock);
 
 				return audioStream; // Data is already PCM format.
 			};
@@ -223,12 +223,10 @@ namespace OpenRA.Mods.Common.FileFormats
 			}
 		}
 
-		sealed class WavStreamMsAdpcm : ReadOnlyAdapterStream
+		public sealed class WavStreamMsAdpcm : ReadOnlyAdapterStream
 		{
 			/* format docs https://wiki.multimedia.cx/index.php/Microsoft_ADPCM
 			 */
-
-			const int MsADPCMAdaptCoeffCount = 7;
 
 			static readonly int[] AdaptationTable = new[]
 			{
@@ -242,15 +240,19 @@ namespace OpenRA.Mods.Common.FileFormats
 
 			readonly short channels;
 			private readonly short blockAlign;
-			private readonly short samplesperblock;
+			private readonly short samplesPerBlock;
+			private readonly int blockDataSize;
 			private readonly int numBlocks;
 
 			int currentBlock;
+#if RAW
 			private FileStream f;
+#endif
 
-			public WavStreamMsAdpcm(Stream stream, int dataSize, short blockAlign, short channels, short samplesperblock)
+			public WavStreamMsAdpcm(Stream stream, int dataSize, short blockAlign, short channels, short samplesPerBlock)
 				: base(stream)
 			{
+#if RAW
 				var pos = stream.Position;
 				using (var f = File.OpenWrite("d:\\dev\\stream.raw"))
 				{
@@ -259,24 +261,28 @@ namespace OpenRA.Mods.Common.FileFormats
 
 				f = File.OpenWrite("D:\\dev\\stream-wav.raw");
 				stream.Position = pos;
+#endif
 
 				this.channels = channels;
 				this.blockAlign = blockAlign;
-				this.samplesperblock = samplesperblock;
+				this.samplesPerBlock = samplesPerBlock;
+				blockDataSize = blockAlign - channels * 7;
 				numBlocks = dataSize / blockAlign;
 			}
 
 			protected override bool BufferData(Stream baseStream, Queue<byte> data)
 			{
-				var samples = new short[samplesperblock * channels];
+				var samples = new short[samplesPerBlock * channels];
 
 				var empty = DecodeBlock(baseStream, samples);
 
 				// buffer the samples
 				foreach (var t in samples)
 				{
-					f.WriteByte((byte)t);
-					f.WriteByte((byte)(t >> 8));
+#if RAW
+					//f.WriteByte((byte)t);
+					//f.WriteByte((byte)(t >> 8));
+#endif
 
 					data.Enqueue((byte)t);
 					data.Enqueue((byte)(t >> 8));
@@ -296,6 +302,9 @@ namespace OpenRA.Mods.Common.FileFormats
 				var bpred = new byte[channels];
 				var chan_idelta = new short[channels];
 
+				var s1 = new int[channels];
+				var s2 = new int[channels];
+
 				for (var c = 0; c < channels; c++)
 					bpred[c] = baseStream.ReadUInt8();
 
@@ -309,42 +318,39 @@ namespace OpenRA.Mods.Common.FileFormats
 					samples[c] = baseStream.ReadInt16();
 
 				var k = 2 * channels;
-				for (var blockindx = channels == 1 ? 7 : 14; blockindx < blockAlign; blockindx++)
+				for (var blockindx = 0; blockindx < blockDataSize; blockindx++)
 				{
 					var bytecode = baseStream.ReadUInt8();
-					samples[k] = (short)((bytecode >> 4) & 0x0F);
-					DecodeNibble(samples, bpred, chan_idelta, k++);
 
-					samples[k] = (short)(bytecode & 0x0F);
-					DecodeNibble(samples, bpred, chan_idelta, k++);
+					samples[k] = DecodeNibble((short)((bytecode >> 4) & 0x0F), bpred, chan_idelta, samples[k - channels], samples[k - 2 * channels], k++);
+
+					samples[k] = DecodeNibble((short)(bytecode & 0x0F), bpred, chan_idelta, samples[k - channels], samples[k - 2 * channels], k++);
 				}
 
 				return ++currentBlock >= numBlocks;
 			}
 
-			private void DecodeNibble(short[] samples, byte[] bpred, short[] chan_idelta, int k)
+			private short DecodeNibble(short nibble, byte[] bpred, short[] chan_idelta, short s1, short s2, int k)
 			{
 				// This code is an adaption of the logic from libsndfile
 				var chan = k % channels;
 
-				var bytecode = (short)(samples[k] & 0xF);
-
 				// Compute next Adaptive Scale Factor (ASF)
 				var idelta = chan_idelta[chan];
 
-				chan_idelta[chan] = (short)((AdaptationTable[bytecode] * idelta) >> 8);
+				chan_idelta[chan] = (short)((AdaptationTable[nibble] * idelta) >> 8);
 				if (chan_idelta[chan] < 16)
 					chan_idelta[chan] = 16;
 
-				if ((bytecode & 0x8) > 0)
-					bytecode -= 0x10;
+				if ((nibble & 0x8) > 0)
+					nibble -= 0x10;
 
-				var predict = ((samples[k - channels] * AdaptCoeff1[bpred[chan]])
-							+ (samples[k - 2 * channels] * AdaptCoeff2[bpred[chan]])) >> 8;
+				var predict = ((s1 * AdaptCoeff1[bpred[chan]])
+							+ (s2 * AdaptCoeff2[bpred[chan]])) >> 8;
 
-				var current = (bytecode * idelta) + predict;
+				var current = (nibble * idelta) + predict;
 
-				samples[k] = ClampInt16(current);
+				return ClampInt16(current);
 			}
 
 			private static short ClampInt16(int current)
