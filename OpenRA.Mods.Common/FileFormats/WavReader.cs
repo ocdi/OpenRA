@@ -239,7 +239,6 @@ namespace OpenRA.Mods.Common.FileFormats
 			static readonly int[] AdaptCoeff2 = new[] { 0, -256, 0, 64, 0, -208, -232 };
 
 			readonly short channels;
-			private readonly short blockAlign;
 			private readonly short samplesPerBlock;
 			private readonly int blockDataSize;
 			private readonly int numBlocks;
@@ -264,7 +263,6 @@ namespace OpenRA.Mods.Common.FileFormats
 #endif
 
 				this.channels = channels;
-				this.blockAlign = blockAlign;
 				this.samplesPerBlock = samplesPerBlock;
 				blockDataSize = blockAlign - channels * 7;
 				numBlocks = dataSize / blockAlign;
@@ -284,11 +282,16 @@ namespace OpenRA.Mods.Common.FileFormats
 					//f.WriteByte((byte)(t >> 8));
 #endif
 
-					data.Enqueue((byte)t);
-					data.Enqueue((byte)(t >> 8));
+					WriteSample(t, data);
 				}
 
 				return empty;
+			}
+
+			void WriteSample(short t, Queue<byte> data)
+			{
+				data.Enqueue((byte)t);
+				data.Enqueue((byte)(t >> 8));
 			}
 
 			/// <summary>
@@ -302,8 +305,8 @@ namespace OpenRA.Mods.Common.FileFormats
 				var bpred = new byte[channels];
 				var chan_idelta = new short[channels];
 
-				var s1 = new int[channels];
-				var s2 = new int[channels];
+				var s1 = new short[channels];
+				var s2 = new short[channels];
 
 				for (var c = 0; c < channels; c++)
 					bpred[c] = baseStream.ReadUInt8();
@@ -312,45 +315,54 @@ namespace OpenRA.Mods.Common.FileFormats
 					chan_idelta[c] = baseStream.ReadInt16();
 
 				for (var c = 0; c < channels; c++)
-					samples[channels + c] = baseStream.ReadInt16();
+					s1[c] = samples[channels + c] = baseStream.ReadInt16();
 
 				for (var c = 0; c < channels; c++)
-					samples[c] = baseStream.ReadInt16();
+					s2[c] = samples[c] = baseStream.ReadInt16();
 
 				var k = 2 * channels;
 				for (var blockindx = 0; blockindx < blockDataSize; blockindx++)
 				{
 					var bytecode = baseStream.ReadUInt8();
+					var chan = k % channels;
 
-					samples[k] = DecodeNibble((short)((bytecode >> 4) & 0x0F), bpred, chan_idelta, samples[k - channels], samples[k - 2 * channels], k++);
+					var s = DecodeNibble((short)((bytecode >> 4) & 0x0F), bpred[chan], ref chan_idelta[chan], ref s1[chan], ref s2[chan]);
 
-					samples[k] = DecodeNibble((short)(bytecode & 0x0F), bpred, chan_idelta, samples[k - channels], samples[k - 2 * channels], k++);
+					// s1[chan] = s;
+					samples[k] = s;
+					k++;
+
+					chan = k % channels;
+					s = DecodeNibble((short)(bytecode & 0x0F), bpred[chan], ref chan_idelta[chan], ref s1[chan], ref s2[chan]);
+
+					// s1[chan] = s;
+					samples[k] = s;
+					k++;
 				}
 
 				return ++currentBlock >= numBlocks;
 			}
 
-			private short DecodeNibble(short nibble, byte[] bpred, short[] chan_idelta, short s1, short s2, int k)
+			// This code is an adaption of the logic from libsndfile
+			private short DecodeNibble(short nibble, byte bpred, ref short chan_idelta, ref short s1, ref short s2)
 			{
-				// This code is an adaption of the logic from libsndfile
-				var chan = k % channels;
-
 				// Compute next Adaptive Scale Factor (ASF)
-				var idelta = chan_idelta[chan];
+				var idelta = chan_idelta;
 
-				chan_idelta[chan] = (short)((AdaptationTable[nibble] * idelta) >> 8);
-				if (chan_idelta[chan] < 16)
-					chan_idelta[chan] = 16;
+				chan_idelta = (short)((AdaptationTable[nibble] * idelta) >> 8);
+				if (chan_idelta < 16)
+					chan_idelta = 16;
 
+				// two's compliment for the nibble
 				if ((nibble & 0x8) > 0)
 					nibble -= 0x10;
 
-				var predict = ((s1 * AdaptCoeff1[bpred[chan]])
-							+ (s2 * AdaptCoeff2[bpred[chan]])) >> 8;
+				var predict = ((s1 * AdaptCoeff1[bpred])
+							+ (s2 * AdaptCoeff2[bpred])) >> 8;
 
-				var current = (nibble * idelta) + predict;
+				s2 = s1;
 
-				return ClampInt16(current);
+				return s1 = ClampInt16((nibble * idelta) + predict);
 			}
 
 			private static short ClampInt16(int current)
