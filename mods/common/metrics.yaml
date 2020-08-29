@@ -26,7 +26,7 @@ Metrics:
 	ProtectedGameColor: FF0000
 	SpawnColor: FFFFFF
 	SpawnContrastColor: 000000
-	SpawnFont: TinyBold
+	SpawnFont: SmallBold
 	SpawnLabelOffset: 0,1
 	TextColor: FFFFFF
 	TextHighlightColor: FFFF00

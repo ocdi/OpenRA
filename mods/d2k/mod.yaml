@@ -167,6 +167,10 @@ Fonts:
 		Font: common|FreeSans.ttf
 		Size: 12
 		Ascender: 9
+	SmallBold:
+		Font: common|FreeSansBold.ttf
+		Size: 12
+		Ascender: 8
 	Regular:
 		Font: common|FreeSans.ttf
 		Size: 14
