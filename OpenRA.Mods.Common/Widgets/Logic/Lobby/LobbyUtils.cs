@@ -232,8 +232,8 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			if (mi.Button == MouseButton.Left)
 				SelectPlayerSpawn(orderManager, mapPreview, preview, mi);
 
-			if (mi.Button == MouseButton.Right && Game.IsHost)
-				ToggleSpawn(orderManager, mapPreview, preview, mi);
+			if (mi.Button == MouseButton.Right)
+				ClearPlayerSpawn(orderManager, mapPreview, preview, mi);
 		}
 
 		private static void SelectPlayerSpawn(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
@@ -248,11 +248,11 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			SetSpawnPoint(orderManager, playerToMove, selectedSpawn);
 		}
 
-		private static void ToggleSpawn(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
+		static void ClearPlayerSpawn(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
 		{
 			var selectedSpawn = DetermineSelectedSpawn(mapPreview, preview, mi);
-
-			orderManager.IssueOrder(Order.Command("toggle_spawn {0}".F(selectedSpawn)));
+			if (Game.IsHost || orderManager.LobbyInfo.Clients.FirstOrDefault(cc => cc.SpawnPoint == selectedSpawn) == orderManager.LocalClient)
+				orderManager.IssueOrder(Order.Command("clear_spawn {0}".F(selectedSpawn)));
 		}
 
 		private static int DetermineSelectedSpawn(MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)

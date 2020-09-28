@@ -43,7 +43,7 @@ namespace OpenRA.Mods.Common.Server
 			{ "faction", Faction },
 			{ "team", Team },
 			{ "spawn", Spawn },
-			{ "toggle_spawn", ToggleSpawn },
+			{ "clear_spawn", ClearPlayerSpawn },
 			{ "color", PlayerColor },
 			{ "sync_lobby", SyncLobby }
 		};
@@ -770,43 +770,38 @@ namespace OpenRA.Mods.Common.Server
 			return true;
 		}
 
-		static bool ToggleSpawn(S server, Connection conn, Session.Client client, string s)
+		static bool ClearPlayerSpawn(S server, Connection conn, Session.Client client, string s)
 		{
-			if (!client.IsAdmin)
-			{
-				server.SendOrderTo(conn, "Message", "Only admins can disable spawn points.");
-				return true;
-			}
-
 			var spawnPoint = Exts.ParseIntegerInvariant(s);
 			if (spawnPoint == 0)
 				return true;
 
 			var existingClient = server.LobbyInfo.Clients.FirstOrDefault(cc => cc.SpawnPoint == spawnPoint);
-
-			if (!server.LobbyInfo.DisabledSpawns.Contains(spawnPoint))
+			if (client != existingClient && !client.IsAdmin)
 			{
-				// check we have enough to toggle
-				var availableSpawnCount = server.Map.SpawnPoints.Length - server.LobbyInfo.DisabledSpawns.Count - 1;
-				if (availableSpawnCount < server.LobbyInfo.Clients.Count(c => !c.IsObserver))
-				{
-					server.SendOrderTo(conn, "Message", "Unable to disable as there would be insufficient spawn locations for all players.");
-					return true;
-				}
-
-				server.LobbyInfo.DisabledSpawns.Add(spawnPoint);
+				server.SendOrderTo(conn, "Message", "Only admins can clear spawn points.");
+				return true;
 			}
-			else
-				server.LobbyInfo.DisabledSpawns.Remove(spawnPoint);
 
+			// Clearing a selected spawn point removes the player
 			if (existingClient != null)
 			{
 				existingClient.SpawnPoint = 0;
+				if (existingClient.State == Session.ClientState.Ready)
+					existingClient.State = Session.ClientState.NotReady;
+
 				server.SyncLobbyClients();
+				return true;
 			}
 
-			server.SyncLobbyInfo();
+			// Clearing an empty spawn point prevents it from being selected
+			// Clearing a disabled spawn restores it for use
+			if (!server.LobbyInfo.DisabledSpawns.Contains(spawnPoint))
+				server.LobbyInfo.DisabledSpawns.Add(spawnPoint);
+			else
+				server.LobbyInfo.DisabledSpawns.Remove(spawnPoint);
 
+			server.SyncLobbyInfo();
 			return true;
 		}
 
