@@ -79,12 +79,16 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			var spawnOccupants = new CachedTransform<ReplayMetadata, Dictionary<int, SpawnOccupant>>(r =>
 				r.GameInfo.Players.ToDictionary(c => c.SpawnPoint, c => new SpawnOccupant(c)));
 
+			// TODO: Show disabled spawns
+			// This requires further changes to MasterServerPinger and the master server backend
+			var noSpawns = new List<int>();
 			Ui.LoadWidget("MAP_PREVIEW", mapPreviewRoot, new WidgetArgs
 			{
 				{ "orderManager", null },
 				{ "getMap", (Func<MapPreview>)(() => map) },
 				{ "onMouseDown",  (Action<MapPreviewWidget, MapPreview, MouseInput>)((preview, mapPreview, mi) => { }) },
 				{ "getSpawnOccupants", (Func<Dictionary<int, SpawnOccupant>>)(() => spawnOccupants.Update(selectedReplay)) },
+				{ "getDisabledSpawns", (Func<MapPreview, List<int>>)(_ => noSpawns) },
 				{ "showUnoccupiedSpawnpoints", false },
 			});
 

@@ -24,8 +24,8 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 		int blinkTick;
 
 		[ObjectCreator.UseCtor]
-		internal MapPreviewLogic(Widget widget, ModData modData, OrderManager orderManager, Func<MapPreview> getMap,
-			Action<MapPreviewWidget, MapPreview, MouseInput> onMouseDown, Func<Dictionary<int, SpawnOccupant>> getSpawnOccupants, bool showUnoccupiedSpawnpoints)
+		internal MapPreviewLogic(Widget widget, ModData modData, OrderManager orderManager, Func<MapPreview> getMap, Action<MapPreviewWidget, MapPreview, MouseInput> onMouseDown,
+			Func<Dictionary<int, SpawnOccupant>> getSpawnOccupants, Func<List<int>> getDisabledSpawns, bool showUnoccupiedSpawnpoints)
 		{
 			var mapRepository = modData.Manifest.Get<WebServices>().MapRepository;
 
@@ -38,7 +38,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 					return map.Status == MapStatus.Available && (!map.RulesLoaded || !map.InvalidCustomRules);
 				};
 
-				SetupWidgets(available, getMap, onMouseDown, getSpawnOccupants, showUnoccupiedSpawnpoints);
+				SetupWidgets(available, getMap, onMouseDown, getSpawnOccupants, getDisabledSpawns, showUnoccupiedSpawnpoints);
 			}
 
 			var invalid = widget.GetOrNull("MAP_INVALID");
@@ -50,14 +50,14 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 					return map.Status == MapStatus.Available && map.InvalidCustomRules;
 				};
 
-				SetupWidgets(invalid, getMap, onMouseDown, getSpawnOccupants, showUnoccupiedSpawnpoints);
+				SetupWidgets(invalid, getMap, onMouseDown, getSpawnOccupants, getDisabledSpawns, showUnoccupiedSpawnpoints);
 			}
 
 			var download = widget.GetOrNull("MAP_DOWNLOADABLE");
 			if (download != null)
 			{
 				download.IsVisible = () => getMap().Status == MapStatus.DownloadAvailable;
-				SetupWidgets(download, getMap, onMouseDown, getSpawnOccupants, showUnoccupiedSpawnpoints);
+				SetupWidgets(download, getMap, onMouseDown, getSpawnOccupants, getDisabledSpawns, showUnoccupiedSpawnpoints);
 
 				var install = download.GetOrNull<ButtonWidget>("MAP_INSTALL");
 				if (install != null)
@@ -86,7 +86,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 					return map.Status != MapStatus.Available && map.Status != MapStatus.DownloadAvailable;
 				};
 
-				SetupWidgets(progress, getMap, onMouseDown, getSpawnOccupants, showUnoccupiedSpawnpoints);
+				SetupWidgets(progress, getMap, onMouseDown, getSpawnOccupants, getDisabledSpawns, showUnoccupiedSpawnpoints);
 
 				var statusSearching = progress.GetOrNull("MAP_STATUS_SEARCHING");
 				if (statusSearching != null)
@@ -172,12 +172,13 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 		}
 
 		void SetupWidgets(Widget parent, Func<MapPreview> getMap,
-			Action<MapPreviewWidget, MapPreview, MouseInput> onMouseDown, Func<Dictionary<int, SpawnOccupant>> getSpawnOccupants, bool showUnoccupiedSpawnpoints)
+				Action<MapPreviewWidget, MapPreview, MouseInput> onMouseDown, Func<Dictionary<int, SpawnOccupant>> getSpawnOccupants, Func<List<int>> getDisabledSpawns, bool showUnoccupiedSpawnpoints)
 		{
 			var preview = parent.Get<MapPreviewWidget>("MAP_PREVIEW");
 			preview.Preview = () => getMap();
 			preview.OnMouseDown = mi => onMouseDown(preview, getMap(), mi);
 			preview.SpawnOccupants = getSpawnOccupants;
+			preview.DisabledSpawns = getDisabledSpawns;
 			preview.ShowUnoccupiedSpawnpoints = showUnoccupiedSpawnpoints;
 
 			var titleLabel = parent.GetOrNull<LabelWithTooltipWidget>("MAP_TITLE");

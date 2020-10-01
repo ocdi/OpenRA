@@ -427,6 +427,11 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 					.ToDictionary(c => c.SpawnPoint, c => new SpawnOccupant(c, server.Mod != modData.Manifest.Id));
 
 				mapPreview.SpawnOccupants = () => occupants;
+
+				// TODO: Show disabled spawns
+				// This requires further changes to MasterServerPinger and the master server backend
+				var noSpawns = new List<int>();
+				mapPreview.DisabledSpawns = () => noSpawns;
 			}
 
 			if (server == null || !server.Clients.Any())

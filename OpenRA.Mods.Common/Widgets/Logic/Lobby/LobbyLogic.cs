@@ -137,6 +137,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 						LobbyUtils.SelectSpawnPoint(orderManager, preview, mapPreview, mi))
 				},
 				{ "getSpawnOccupants", (Func<Dictionary<int, SpawnOccupant>>)(() => spawnOccupants) },
+				{ "getDisabledSpawns", (Func<List<int>>)(() => orderManager.LobbyInfo.DisabledSpawns) },
 				{ "showUnoccupiedSpawnpoints", true },
 			});
 
@@ -798,10 +799,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 		{
 			spawnOccupants = orderManager.LobbyInfo.Clients
 				.Where(c => c.SpawnPoint != 0)
-				.Select(c => new SpawnOccupant(c))
-				.Concat(orderManager.LobbyInfo.DisabledSpawns
-					.Select(d => new SpawnOccupant(d)))
-				.ToDictionary(c => c.SpawnPoint, c => c);
+				.ToDictionary(c => c.SpawnPoint, c => new SpawnOccupant(c));
 		}
 
 		void OnGameStart()

@@ -26,7 +26,6 @@ namespace OpenRA.Mods.Common.Widgets
 		public readonly int Team;
 		public readonly string Faction;
 		public readonly int SpawnPoint;
-		public readonly bool Closed;
 
 		public SpawnOccupant(Session.Client client)
 		{
@@ -46,14 +45,6 @@ namespace OpenRA.Mods.Common.Widgets
 			SpawnPoint = player.SpawnPoint;
 		}
 
-		public SpawnOccupant(int closedSpawn)
-		{
-			Closed = true;
-			SpawnPoint = closedSpawn;
-			Color = Color.Black;
-			PlayerName = "Closed spawn";
-		}
-
 		public SpawnOccupant(GameClient player, bool suppressFaction)
 		{
 			Color = player.Color;
@@ -66,6 +57,8 @@ namespace OpenRA.Mods.Common.Widgets
 
 	public class MapPreviewWidget : Widget
 	{
+		static readonly List<int> NoDisabledSpawns = new List<int>();
+
 		public readonly bool IgnoreMouseInput = false;
 		public readonly bool ShowSpawnPoints = true;
 
@@ -80,6 +73,7 @@ namespace OpenRA.Mods.Common.Widgets
 
 		public Func<MapPreview> Preview = () => null;
 		public Func<Dictionary<int, SpawnOccupant>> SpawnOccupants = () => new Dictionary<int, SpawnOccupant>();
+		public Func<List<int>> DisabledSpawns = () => NoDisabledSpawns;
 		public Action<MouseInput> OnMouseDown = _ => { };
 		public int TooltipSpawnIndex = -1;
 		public bool ShowUnoccupiedSpawnpoints = true;
@@ -194,6 +188,7 @@ namespace OpenRA.Mods.Common.Widgets
 			{
 				var spawnPoints = preview.SpawnPoints;
 				var occupants = SpawnOccupants();
+				var disabled = DisabledSpawns();
 				var gridType = preview.GridType;
 				for (var i = 0; i < spawnPoints.Length; i++)
 				{
@@ -202,16 +197,20 @@ namespace OpenRA.Mods.Common.Widgets
 					// Spawn numbers are 1 indexed with 0 meaning "random spawn".
 					var occupied = occupants.TryGetValue(i + 1, out var occupant);
 					var pos = ConvertToPreview(p, gridType);
-					var sprite = occupied ? occupant.Closed ? spawnClosed : spawnClaimed : spawnUnclaimed;
+
+					if (disabled.Contains(i + 1))
+					{
+						Game.Renderer.RgbaSpriteRenderer.DrawSprite(spawnClosed, pos - spawnClosed.Size.XY.ToInt2() / 2);
+						continue;
+					}
+
+					var sprite = occupied ? spawnClaimed : spawnUnclaimed;
 					var offset = sprite.Size.XY.ToInt2() / 2;
 
-					if (occupied && !occupant.Closed)
+					if (occupied)
 						WidgetUtils.FillEllipseWithColor(new Rectangle(pos.X - offset.X + 1, pos.Y - offset.Y + 1, (int)sprite.Size.X - 2, (int)sprite.Size.Y - 2), occupant.Color);
 
 					Game.Renderer.RgbaSpriteRenderer.DrawSprite(sprite, pos - offset);
-
-					if (occupied && occupant.Closed)
-						continue;
 
 					var number = Convert.ToChar('A' + spawnPoints.IndexOf(p)).ToString();
 					var textOffset = spawnFont.Measure(number) / 2 + spawnLabelOffset;
