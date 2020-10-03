@@ -93,7 +93,7 @@ namespace OpenRA
 		}
 
 		/// <summary>Adds the player information at start-up.</summary>
-		public void AddPlayer(OpenRA.Player runtimePlayer, Session lobbyInfo)
+		public void AddPlayer(OpenRA.Player runtimePlayer, Session lobbyInfo, int spawnPoint)
 		{
 			if (runtimePlayer == null)
 				throw new ArgumentNullException("runtimePlayer");
@@ -120,9 +120,9 @@ namespace OpenRA
 				FactionId = runtimePlayer.Faction.InternalName,
 				Color = runtimePlayer.Color,
 				Team = client.Team,
-				SpawnPoint = runtimePlayer.SpawnPoint,
+				SpawnPoint = spawnPoint,
 				IsRandomFaction = runtimePlayer.Faction.InternalName != client.Faction,
-				IsRandomSpawnPoint = runtimePlayer.SpawnPoint != client.SpawnPoint,
+				IsRandomSpawnPoint = runtimePlayer.DisplaySpawnPoint == 0,
 				Fingerprint = client.Fingerprint
 			};
 

@@ -56,6 +56,7 @@ namespace OpenRA
 		public readonly bool NonCombatant = false;
 		public readonly bool Playable = true;
 		public readonly int ClientIndex;
+		public readonly CPos HomeLocation;
 		public readonly PlayerReference PlayerReference;
 		public readonly bool IsBot;
 		public readonly string BotType;
@@ -65,8 +66,10 @@ namespace OpenRA
 		/// <summary>The faction (including Random, etc) that was selected in the lobby.</summary>
 		public readonly FactionInfo DisplayFaction;
 
+		/// <summary>The spawn point index (including 0 for Random) that was selected in the lobby for client-based players.</summary>
+		public readonly int DisplaySpawnPoint;
+
 		public WinState WinState = WinState.Undefined;
-		public int SpawnPoint;
 		public bool HasObjectives = false;
 		public bool Spectating;
 
@@ -131,6 +134,8 @@ namespace OpenRA
 
 			inMissionMap = world.Map.Visibility.HasFlag(MapVisibility.MissionSelector);
 
+			var assignSpawnPoints = world.WorldActor.TraitOrDefault<IAssignSpawnPoints>();
+
 			// Real player or host-created bot
 			if (client != null)
 			{
@@ -148,6 +153,8 @@ namespace OpenRA
 				BotType = client.Bot;
 				Faction = ChooseFaction(world, client.Faction, !pr.LockFaction);
 				DisplayFaction = ChooseDisplayFaction(world, client.Faction);
+				HomeLocation = assignSpawnPoints?.AssignHomeLocation(world, client) ?? pr.HomeLocation;
+				DisplaySpawnPoint = client.SpawnPoint;
 			}
 			else
 			{
@@ -161,6 +168,8 @@ namespace OpenRA
 				BotType = pr.Bot;
 				Faction = ChooseFaction(world, pr.Faction, false);
 				DisplayFaction = ChooseDisplayFaction(world, pr.Faction);
+				HomeLocation = pr.HomeLocation;
+				DisplaySpawnPoint = 0;
 			}
 
 			if (!Spectating)

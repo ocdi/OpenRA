@@ -37,7 +37,14 @@ namespace OpenRA.Mods.Common.Scripting
 		public string Faction { get { return Player.Faction.InternalName; } }
 
 		[Desc("The player's spawnpoint ID.")]
-		public int Spawn { get { return Player.SpawnPoint; } }
+		public int Spawn
+		{
+			get
+			{
+				var c = Player.World.LobbyInfo.Clients.FirstOrDefault(i => i.Index == Player.ClientIndex);
+				return c?.SpawnPoint ?? 0;
+			}
+		}
 
 		[Desc("The player's team ID.")]
 		public int Team
@@ -45,7 +52,7 @@ namespace OpenRA.Mods.Common.Scripting
 			get
 			{
 				var c = Player.World.LobbyInfo.Clients.FirstOrDefault(i => i.Index == Player.ClientIndex);
-				return c != null ? c.Team : 0;
+				return c?.Team ?? 0;
 			}
 		}
 
