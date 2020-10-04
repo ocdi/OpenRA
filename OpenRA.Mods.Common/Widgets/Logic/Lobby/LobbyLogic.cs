@@ -137,7 +137,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 						LobbyUtils.SelectSpawnPoint(orderManager, preview, mapPreview, mi))
 				},
 				{ "getSpawnOccupants", (Func<Dictionary<int, SpawnOccupant>>)(() => spawnOccupants) },
-				{ "getDisabledSpawns", (Func<List<int>>)(() => orderManager.LobbyInfo.DisabledSpawns) },
+				{ "getDisabledSpawnPoints", (Func<List<int>>)(() => orderManager.LobbyInfo.DisabledSpawnPoints) },
 				{ "showUnoccupiedSpawnpoints", true },
 			});
 
@@ -573,8 +573,8 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 					c.Bot == null &&
 					c.Team == orderManager.LocalClient.Team);
 
-			var availableSpawnCount = map.SpawnPoints.Length - orderManager.LobbyInfo.DisabledSpawns.Count;
-			insufficientPlayerSpawns = availableSpawnCount < orderManager.LobbyInfo.Clients.Count(c => !c.IsObserver);
+			var availableSpawnPointCount = map.SpawnPoints.Length - orderManager.LobbyInfo.DisabledSpawnPoints.Count;
+			insufficientPlayerSpawns = availableSpawnPointCount < orderManager.LobbyInfo.Clients.Count(c => !c.IsObserver);
 
 			if (disableTeamChat)
 				teamChat = false;

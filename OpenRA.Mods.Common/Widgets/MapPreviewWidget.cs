@@ -57,7 +57,7 @@ namespace OpenRA.Mods.Common.Widgets
 
 	public class MapPreviewWidget : Widget
 	{
-		static readonly List<int> NoDisabledSpawns = new List<int>();
+		static readonly List<int> NoDisabledSpawnPoints = new List<int>();
 
 		public readonly bool IgnoreMouseInput = false;
 		public readonly bool ShowSpawnPoints = true;
@@ -73,7 +73,7 @@ namespace OpenRA.Mods.Common.Widgets
 
 		public Func<MapPreview> Preview = () => null;
 		public Func<Dictionary<int, SpawnOccupant>> SpawnOccupants = () => new Dictionary<int, SpawnOccupant>();
-		public Func<List<int>> DisabledSpawns = () => NoDisabledSpawns;
+		public Func<List<int>> DisabledSpawnPoints = () => NoDisabledSpawnPoints;
 		public Action<MouseInput> OnMouseDown = _ => { };
 		public int TooltipSpawnIndex = -1;
 		public bool ShowUnoccupiedSpawnpoints = true;
@@ -188,7 +188,7 @@ namespace OpenRA.Mods.Common.Widgets
 			{
 				var spawnPoints = preview.SpawnPoints;
 				var occupants = SpawnOccupants();
-				var disabled = DisabledSpawns();
+				var disabled = DisabledSpawnPoints();
 				var gridType = preview.GridType;
 				for (var i = 0; i < spawnPoints.Length; i++)
 				{

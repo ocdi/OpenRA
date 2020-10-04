@@ -88,7 +88,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				{ "getMap", (Func<MapPreview>)(() => map) },
 				{ "onMouseDown",  (Action<MapPreviewWidget, MapPreview, MouseInput>)((preview, mapPreview, mi) => { }) },
 				{ "getSpawnOccupants", (Func<Dictionary<int, SpawnOccupant>>)(() => spawnOccupants.Update(selectedReplay)) },
-				{ "getDisabledSpawns", (Func<MapPreview, List<int>>)(_ => noSpawns) },
+				{ "getDisabledSpawnPoints", (Func<MapPreview, List<int>>)(_ => noSpawns) },
 				{ "showUnoccupiedSpawnpoints", false },
 			});
 

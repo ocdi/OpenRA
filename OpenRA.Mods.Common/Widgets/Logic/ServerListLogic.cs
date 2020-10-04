@@ -431,7 +431,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				// TODO: Show disabled spawns
 				// This requires further changes to MasterServerPinger and the master server backend
 				var noSpawns = new List<int>();
-				mapPreview.DisabledSpawns = () => noSpawns;
+				mapPreview.DisabledSpawnPoints = () => noSpawns;
 			}
 
 			if (server == null || !server.Clients.Any())

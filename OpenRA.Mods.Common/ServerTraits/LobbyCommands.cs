@@ -117,8 +117,8 @@ namespace OpenRA.Mods.Common.Server
 				return;
 
 			// Can't have insufficient spawns
-			var availableSpawnCount = server.Map.SpawnPoints.Length - server.LobbyInfo.DisabledSpawns.Count;
-			if (availableSpawnCount < server.LobbyInfo.Clients.Count(c => !c.IsObserver))
+			var availableSpawnPointCount = server.Map.SpawnPoints.Length - server.LobbyInfo.DisabledSpawnPoints.Count;
+			if (availableSpawnPointCount < server.LobbyInfo.Clients.Count(c => !c.IsObserver))
 				return;
 
 			server.StartGame();
@@ -153,8 +153,8 @@ namespace OpenRA.Mods.Common.Server
 				return true;
 			}
 
-			var availableSpawnCount = server.Map.SpawnPoints.Length - server.LobbyInfo.DisabledSpawns.Count;
-			if (availableSpawnCount < server.LobbyInfo.Clients.Count(c => !c.IsObserver))
+			var availableSpawnPointCount = server.Map.SpawnPoints.Length - server.LobbyInfo.DisabledSpawnPoints.Count;
+			if (availableSpawnPointCount < server.LobbyInfo.Clients.Count(c => !c.IsObserver))
 			{
 				server.SendOrderTo(conn, "Message", "Unable to start the game until more spawn points are enabled.");
 				return true;
@@ -454,7 +454,7 @@ namespace OpenRA.Mods.Common.Server
 					if (c.Slot != null && !server.LobbyInfo.Slots[c.Slot].LockColor)
 						c.Color = c.PreferredColor = SanitizePlayerColor(server, c.Color, c.Index, conn);
 
-				server.LobbyInfo.DisabledSpawns.Clear();
+				server.LobbyInfo.DisabledSpawnPoints.Clear();
 
 				server.SyncLobbyInfo();
 
@@ -796,10 +796,10 @@ namespace OpenRA.Mods.Common.Server
 
 			// Clearing an empty spawn point prevents it from being selected
 			// Clearing a disabled spawn restores it for use
-			if (!server.LobbyInfo.DisabledSpawns.Contains(spawnPoint))
-				server.LobbyInfo.DisabledSpawns.Add(spawnPoint);
+			if (!server.LobbyInfo.DisabledSpawnPoints.Contains(spawnPoint))
+				server.LobbyInfo.DisabledSpawnPoints.Add(spawnPoint);
 			else
-				server.LobbyInfo.DisabledSpawns.Remove(spawnPoint);
+				server.LobbyInfo.DisabledSpawnPoints.Remove(spawnPoint);
 
 			server.SyncLobbyInfo();
 			return true;

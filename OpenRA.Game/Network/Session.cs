@@ -26,7 +26,7 @@ namespace OpenRA.Network
 		// Keyed by the PlayerReference id that the slot corresponds to
 		public Dictionary<string, Slot> Slots = new Dictionary<string, Slot>();
 
-		public List<int> DisabledSpawns = new List<int>();
+		public List<int> DisabledSpawnPoints = new List<int>();
 
 		public Global GlobalSettings = new Global();
 
@@ -71,8 +71,8 @@ namespace OpenRA.Network
 							var s = Slot.Deserialize(node.Value);
 							session.Slots.Add(s.PlayerReference, s);
 							break;
-						case "DisabledSpawns":
-							session.DisabledSpawns = FieldLoader.GetValue<List<int>>("DisabledSpawns", node.Value.Value);
+						case "DisabledSpawnPoints":
+							session.DisabledSpawnPoints = FieldLoader.GetValue<List<int>>("DisabledSpawnPoints", node.Value.Value);
 							break;
 					}
 				}
@@ -274,7 +274,7 @@ namespace OpenRA.Network
 		{
 			var sessionData = new List<MiniYamlNode>()
 			{
-				new MiniYamlNode("DisabledSpawns", FieldSaver.FormatValue(DisabledSpawns))
+				new MiniYamlNode("DisabledSpawnPoints", FieldSaver.FormatValue(DisabledSpawnPoints))
 			};
 
 			foreach (var client in Clients)

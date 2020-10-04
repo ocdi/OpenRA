@@ -58,7 +58,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 						return;
 					}
 
-					labelText = preview.DisabledSpawns().Contains(preview.TooltipSpawnIndex) ? "Disabled spawn" : "Available spawn";
+					labelText = preview.DisabledSpawnPoints().Contains(preview.TooltipSpawnIndex) ? "Disabled spawn" : "Available spawn";
 					playerFaction = null;
 					playerTeam = 0;
 					widget.Bounds.Height = singleHeight;

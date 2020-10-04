@@ -230,32 +230,32 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 		public static void SelectSpawnPoint(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
 		{
 			if (mi.Button == MouseButton.Left)
-				SelectPlayerSpawn(orderManager, mapPreview, preview, mi);
+				SelectPlayerSpawnPoint(orderManager, mapPreview, preview, mi);
 
 			if (mi.Button == MouseButton.Right)
-				ClearPlayerSpawn(orderManager, mapPreview, preview, mi);
+				ClearPlayerSpawnPoint(orderManager, mapPreview, preview, mi);
 		}
 
-		private static void SelectPlayerSpawn(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
+		static void SelectPlayerSpawnPoint(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
 		{
 			if (!orderManager.LocalClient.IsObserver && orderManager.LocalClient.State == Session.ClientState.Ready)
 				return;
 
-			var selectedSpawn = DetermineSelectedSpawn(mapPreview, preview, mi);
+			var selectedSpawn = DetermineSelectedSpawnPoint(mapPreview, preview, mi);
 
 			var locals = orderManager.LobbyInfo.Clients.Where(c => c.Index == orderManager.LocalClient.Index || (Game.IsHost && c.Bot != null));
 			var playerToMove = locals.FirstOrDefault(c => ((selectedSpawn == 0) ^ (c.SpawnPoint == 0) && !c.IsObserver));
 			SetSpawnPoint(orderManager, playerToMove, selectedSpawn);
 		}
 
-		static void ClearPlayerSpawn(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
+		static void ClearPlayerSpawnPoint(OrderManager orderManager, MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
 		{
-			var selectedSpawn = DetermineSelectedSpawn(mapPreview, preview, mi);
+			var selectedSpawn = DetermineSelectedSpawnPoint(mapPreview, preview, mi);
 			if (Game.IsHost || orderManager.LobbyInfo.Clients.FirstOrDefault(cc => cc.SpawnPoint == selectedSpawn) == orderManager.LocalClient)
 				orderManager.IssueOrder(Order.Command("clear_spawn {0}".F(selectedSpawn)));
 		}
 
-		private static int DetermineSelectedSpawn(MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
+		private static int DetermineSelectedSpawnPoint(MapPreviewWidget mapPreview, MapPreview preview, MouseInput mi)
 		{
 			var spawnSize = ChromeProvider.GetImage("lobby-bits", "spawn-unclaimed").Size.XY;
 			var selectedSpawn = preview.SpawnPoints
@@ -266,11 +266,11 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			return selectedSpawn;
 		}
 
-		private static void SetSpawnPoint(OrderManager orderManager, Session.Client playerToMove, int selectedSpawn)
+		private static void SetSpawnPoint(OrderManager orderManager, Session.Client playerToMove, int selectedSpawnPoint)
 		{
-			var owned = orderManager.LobbyInfo.Clients.Any(c => c.SpawnPoint == selectedSpawn) || orderManager.LobbyInfo.DisabledSpawns.Contains(selectedSpawn);
-			if (selectedSpawn == 0 || !owned)
-				orderManager.IssueOrder(Order.Command("spawn {0} {1}".F((playerToMove ?? orderManager.LocalClient).Index, selectedSpawn)));
+			var owned = orderManager.LobbyInfo.Clients.Any(c => c.SpawnPoint == selectedSpawnPoint) || orderManager.LobbyInfo.DisabledSpawnPoints.Contains(selectedSpawnPoint);
+			if (selectedSpawnPoint == 0 || !owned)
+				orderManager.IssueOrder(Order.Command("spawn {0} {1}".F((playerToMove ?? orderManager.LocalClient).Index, selectedSpawnPoint)));
 		}
 
 		public static Color LatencyColor(Session.ClientPing ping)
@@ -557,7 +557,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				var spawnPoints = Enumerable.Range(0, map.SpawnPoints.Length + 1).Except(
 					orderManager.LobbyInfo.Clients.Where(
 					client => client != c && client.SpawnPoint != 0).Select(client => client.SpawnPoint))
-					.Except(orderManager.LobbyInfo.DisabledSpawns);
+					.Except(orderManager.LobbyInfo.DisabledSpawnPoints);
 				ShowSpawnDropDown(dropdown, c, orderManager, spawnPoints);
 			};
 			dropdown.GetText = () => (c.SpawnPoint == 0) ? "-" : Convert.ToChar('A' - 1 + c.SpawnPoint).ToString();
