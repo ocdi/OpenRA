@@ -84,8 +84,11 @@ namespace OpenRA.Mods.Common.Traits
 			spawnLocations = spawns.ToArray();
 
 			// Initialize the list of unoccupied spawn points for AssignSpawnLocations to pick from
-			availableSpawnPoints = Enumerable.Range(1, spawnLocations.Length).ToList();
+			availableSpawnPoints = Enumerable.Range(1, spawnLocations.Length)
+				.Except(self.World.LobbyInfo.DisabledSpawnPoints)
+				.ToList();
 			occupiedSpawnPoints = new Dictionary<int, Session.Client>();
+
 			foreach (var kv in self.World.LobbyInfo.Slots)
 			{
 				var client = self.World.LobbyInfo.ClientInSlot(kv.Key);
@@ -95,8 +98,6 @@ namespace OpenRA.Mods.Common.Traits
 				availableSpawnPoints.Remove(client.SpawnPoint);
 				occupiedSpawnPoints.Add(client.SpawnPoint, client);
 			}
-			
-			// TODO exclude the disabled spawns here except for the pre-assigned ones
 		}
 
 		CPos IAssignSpawnPoints.AssignHomeLocation(World world, Session.Client client)
